@@ -26,19 +26,33 @@
  */
 
 const { Project } = require("ts-morph");
+const { ts } = require("@ts-morph/common");
 const path = require("path");
+
+/**
+ * Maximally permissive compiler options for AST extraction.
+ * We use ESNext target/module to accept ALL valid JS/TS syntax
+ * regardless of what the project actually targets.
+ * The analyzer only needs to parse and check exports, not compile.
+ */
+const PERMISSIVE_COMPILER_OPTIONS = {
+  allowJs: true,
+  checkJs: false,
+  noEmit: true,
+  skipLibCheck: true,
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  jsx: ts.JsxEmit.ReactJSX,
+  esModuleInterop: true,
+  allowSyntheticDefaultImports: true,
+};
 
 class TypeScriptAnalyzer {
   constructor(repoPath) {
     this.repoPath = repoPath;
     this.project = new Project({
-      compilerOptions: {
-        allowJs: true,
-        checkJs: false,
-        noEmit: true,
-        target: "ES2020",
-        module: "CommonJS",
-      },
+      compilerOptions: PERMISSIVE_COMPILER_OPTIONS,
     });
     this.functions = {}; // functionId -> function metadata
     this.callGraph = {}; // callerId -> array of call info
@@ -481,13 +495,7 @@ function extractSingleFunction(filePath, functionRef) {
   }
 
   const project = new Project({
-    compilerOptions: {
-      allowJs: true,
-      checkJs: false,
-      noEmit: true,
-      target: "ES2020",
-      module: "CommonJS",
-    },
+    compilerOptions: PERMISSIVE_COMPILER_OPTIONS,
   });
 
   try {
@@ -697,13 +705,7 @@ function extractSingleFunction(filePath, functionRef) {
                   // Recursively extract from the required file
                   // Create a new project for the required file
                   const requiredProject = new Project({
-                    compilerOptions: {
-                      allowJs: true,
-                      checkJs: false,
-                      noEmit: true,
-                      target: "ES2020",
-                      module: "CommonJS",
-                    },
+                    compilerOptions: PERMISSIVE_COMPILER_OPTIONS,
                   });
 
                   try {
