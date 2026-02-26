@@ -23,6 +23,7 @@ Usage:
 
 import json
 import re
+import sys
 from dataclasses import dataclass, asdict, field
 from enum import Enum
 from pathlib import Path
@@ -213,7 +214,7 @@ def gather_context_sources(repo_path: Path) -> dict[str, str]:
                     content = content[:10000] + "\n\n[... truncated ...]"
                 sources[filename] = content
             except Exception as e:
-                print(f"Warning: Could not read {filename}: {e}")
+                print(f"Warning: Could not read {filename}: {e}", file=sys.stderr)
 
     # Get directory structure (top 2 levels)
     dir_structure = get_directory_structure(repo_path, max_depth=2)
@@ -364,10 +365,10 @@ def check_manual_override(repo_path: Path) -> ApplicationContext | None:
                         data['source'] = 'manual'
                         return ApplicationContext(**data)
                     except ImportError:
-                        print("Warning: PyYAML not installed, cannot parse YAML frontmatter")
+                        print("Warning: PyYAML not installed, cannot parse YAML frontmatter", file=sys.stderr)
 
         except Exception as e:
-            print(f"Warning: Could not parse {filename}: {e}")
+            print(f"Warning: Could not parse {filename}: {e}", file=sys.stderr)
 
     return None
 
@@ -485,11 +486,11 @@ def generate_application_context(
     if not force_regenerate:
         manual_context = check_manual_override(repo_path)
         if manual_context:
-            print(f"Using manual override from repository")
+            print(f"Using manual override from repository", file=sys.stderr)
             return manual_context
 
     # Gather sources
-    print(f"Gathering context sources from {repo_path}...")
+    print(f"Gathering context sources from {repo_path}...", file=sys.stderr)
     sources = gather_context_sources(repo_path)
 
     if not sources:
@@ -501,7 +502,7 @@ def generate_application_context(
         sources_text += f"\n### {name}\n```\n{content}\n```\n"
 
     # Call LLM
-    print(f"Generating context with {model}...")
+    print(f"Generating context with {model}...", file=sys.stderr)
     client = Anthropic()
     response = client.messages.create(
         model=model,
@@ -547,7 +548,7 @@ def save_context(context: ApplicationContext, output_path: Path) -> None:
     with open(output_path, 'w') as f:
         json.dump(asdict(context), f, indent=2)
 
-    print(f"Context saved to {output_path}")
+    print(f"Context saved to {output_path}", file=sys.stderr)
 
 
 def load_context(input_path: Path) -> ApplicationContext:

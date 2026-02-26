@@ -14,6 +14,7 @@ Uses LLM arbitration to provide a third opinion and detailed reasoning.
 """
 
 import json
+import sys
 from typing import Optional
 from dataclasses import dataclass
 
@@ -238,7 +239,7 @@ class GroundTruthChallenger:
         Returns:
             ChallengeResult with arbitration verdict
         """
-        print(f"      Challenging FP: {route_key}")
+        print(f"      Challenging FP: {route_key}", file=sys.stderr)
 
         prompt = get_fp_challenge_prompt(
             route_key=route_key,
@@ -264,7 +265,7 @@ class GroundTruthChallenger:
                     recommendation=parsed.get("recommendation", "SAFE")
                 )
         except Exception as e:
-            print(f"      Challenge failed: {e}")
+            print(f"      Challenge failed: {e}", file=sys.stderr)
             return ChallengeResult(
                 route_key=route_key,
                 challenge_type="FP",
@@ -310,8 +311,8 @@ class GroundTruthChallenger:
         Returns:
             ChallengeResult with arbitration verdict
         """
-        print(f"      Challenging FN: {route_key}")
-        print(f"      Code length: {len(code)} chars")
+        print(f"      Challenging FN: {route_key}", file=sys.stderr)
+        print(f"      Code length: {len(code)} chars", file=sys.stderr)
 
         prompt = get_fn_challenge_prompt(
             route_key=route_key,
@@ -325,7 +326,7 @@ class GroundTruthChallenger:
             parsed = _parse_json_response(response, client=self.client)
 
             if not parsed:
-                print(f"      Failed to parse response: {response[:500]}...")
+                print(f"      Failed to parse response: {response[:500]}...", file=sys.stderr)
 
             if parsed:
                 vulns = []
@@ -344,7 +345,7 @@ class GroundTruthChallenger:
                     recommendation=parsed.get("recommendation", "VULNERABLE")
                 )
         except Exception as e:
-            print(f"      Challenge failed: {e}")
+            print(f"      Challenge failed: {e}", file=sys.stderr)
             return ChallengeResult(
                 route_key=route_key,
                 challenge_type="FN",
@@ -447,65 +448,65 @@ def print_challenge_report(challenges: dict) -> None:
     """Print a formatted report of challenge results."""
     summary = challenges["summary"]
 
-    print("\n" + "=" * 70)
-    print("GROUND TRUTH CHALLENGE REPORT")
-    print("=" * 70)
+    print("\n" + "=" * 70, file=sys.stderr)
+    print("GROUND TRUTH CHALLENGE REPORT", file=sys.stderr)
+    print("=" * 70, file=sys.stderr)
 
     # False Positives
-    print(f"\n### False Positives Challenged: {summary['total_fp_challenged']}")
+    print(f"\n### False Positives Challenged: {summary['total_fp_challenged']}", file=sys.stderr)
     if summary['total_fp_challenged'] > 0:
-        print(f"    - Model was correct (GT wrong): {summary['fp_model_correct']}")
-        print(f"    - Ground truth was correct:    {summary['fp_ground_truth_correct']}")
-        print(f"    - Uncertain:                   {summary['fp_uncertain']}")
+        print(f"    - Model was correct (GT wrong): {summary['fp_model_correct']}", file=sys.stderr)
+        print(f"    - Ground truth was correct:    {summary['fp_ground_truth_correct']}", file=sys.stderr)
+        print(f"    - Uncertain:                   {summary['fp_uncertain']}", file=sys.stderr)
 
         for fp in challenges["false_positives"]:
-            print(f"\n    {fp['route_key']}:")
-            print(f"      Verdict: {fp['arbitration_verdict']} (confidence: {fp['confidence']:.2f})")
-            print(f"      Recommendation: {fp['recommendation']}")
-            print(f"      Reasoning: {fp['reasoning'][:200]}...")
+            print(f"\n    {fp['route_key']}:", file=sys.stderr)
+            print(f"      Verdict: {fp['arbitration_verdict']} (confidence: {fp['confidence']:.2f})", file=sys.stderr)
+            print(f"      Recommendation: {fp['recommendation']}", file=sys.stderr)
+            print(f"      Reasoning: {fp['reasoning'][:200]}...", file=sys.stderr)
 
     # False Negatives
-    print(f"\n### False Negatives Challenged: {summary['total_fn_challenged']}")
+    print(f"\n### False Negatives Challenged: {summary['total_fn_challenged']}", file=sys.stderr)
     if summary['total_fn_challenged'] > 0:
-        print(f"    - Model was correct (GT wrong): {summary['fn_model_correct']}")
-        print(f"    - Ground truth was correct:    {summary['fn_ground_truth_correct']}")
-        print(f"    - Uncertain:                   {summary['fn_uncertain']}")
+        print(f"    - Model was correct (GT wrong): {summary['fn_model_correct']}", file=sys.stderr)
+        print(f"    - Ground truth was correct:    {summary['fn_ground_truth_correct']}", file=sys.stderr)
+        print(f"    - Uncertain:                   {summary['fn_uncertain']}", file=sys.stderr)
 
         for fn in challenges["false_negatives"]:
-            print(f"\n    {fn['route_key']}:")
-            print(f"      Verdict: {fn['arbitration_verdict']} (confidence: {fn['confidence']:.2f})")
-            print(f"      Recommendation: {fn['recommendation']}")
-            print(f"      Reasoning: {fn['reasoning'][:200]}...")
+            print(f"\n    {fn['route_key']}:", file=sys.stderr)
+            print(f"      Verdict: {fn['arbitration_verdict']} (confidence: {fn['confidence']:.2f})", file=sys.stderr)
+            print(f"      Recommendation: {fn['recommendation']}", file=sys.stderr)
+            print(f"      Reasoning: {fn['reasoning'][:200]}...", file=sys.stderr)
 
     # Overall assessment
-    print("\n### Overall Assessment")
+    print("\n### Overall Assessment", file=sys.stderr)
     total_challenged = summary['total_fp_challenged'] + summary['total_fn_challenged']
     model_correct = summary['fp_model_correct'] + summary['fn_model_correct']
     gt_correct = summary['fp_ground_truth_correct'] + summary['fn_ground_truth_correct']
     uncertain = summary['fp_uncertain'] + summary['fn_uncertain']
 
     if total_challenged > 0:
-        print(f"    Total challenges: {total_challenged}")
-        print(f"    Model likely correct: {model_correct} ({100*model_correct/total_challenged:.1f}%)")
-        print(f"    Ground truth likely correct: {gt_correct} ({100*gt_correct/total_challenged:.1f}%)")
-        print(f"    Uncertain: {uncertain} ({100*uncertain/total_challenged:.1f}%)")
+        print(f"    Total challenges: {total_challenged}", file=sys.stderr)
+        print(f"    Model likely correct: {model_correct} ({100*model_correct/total_challenged:.1f}%)", file=sys.stderr)
+        print(f"    Ground truth likely correct: {gt_correct} ({100*gt_correct/total_challenged:.1f}%)", file=sys.stderr)
+        print(f"    Uncertain: {uncertain} ({100*uncertain/total_challenged:.1f}%)", file=sys.stderr)
 
         if model_correct > gt_correct:
-            print("\n    >>> The model appears to be MORE accurate than the ground truth!")
-            print("    >>> Consider reviewing and updating the ground truth dataset.")
+            print("\n    >>> The model appears to be MORE accurate than the ground truth!", file=sys.stderr)
+            print("    >>> Consider reviewing and updating the ground truth dataset.", file=sys.stderr)
         elif gt_correct > model_correct:
-            print("\n    >>> The ground truth appears to be correct.")
-            print("    >>> Model may need tuning to reduce false positives/negatives.")
+            print("\n    >>> The ground truth appears to be correct.", file=sys.stderr)
+            print("    >>> Model may need tuning to reduce false positives/negatives.", file=sys.stderr)
 
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 70, file=sys.stderr)
 
 
 def test_challenger():
     """Test the ground truth challenger with sample data."""
     from .llm_client import AnthropicClient
 
-    print("Testing Ground Truth Challenger")
-    print("=" * 60)
+    print("Testing Ground Truth Challenger", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
 
     client = AnthropicClient()
     challenger = GroundTruthChallenger(client)
@@ -544,10 +545,10 @@ router.post('/products', isAuthenticated, function(req, res) {
         "reasoning": "User-controlled input from request body is used in database query"
     }
 
-    print("\n--- Testing False Positive Challenge ---")
-    print(f"Code: {fp_code[:100]}...")
-    print(f"Model says: VULNERABLE (SQL Injection)")
-    print(f"Ground truth says: SAFE")
+    print("\n--- Testing False Positive Challenge ---", file=sys.stderr)
+    print(f"Code: {fp_code[:100]}...", file=sys.stderr)
+    print(f"Model says: VULNERABLE (SQL Injection)", file=sys.stderr)
+    print(f"Ground truth says: SAFE", file=sys.stderr)
 
     fp_challenge = challenger.challenge_false_positive(
         route_key="POST:/app/products",
@@ -555,11 +556,11 @@ router.post('/products', isAuthenticated, function(req, res) {
         model_result=fp_result
     )
 
-    print(f"\nArbitration result:")
-    print(f"  Verdict: {fp_challenge.arbitration_verdict}")
-    print(f"  Confidence: {fp_challenge.confidence}")
-    print(f"  Recommendation: {fp_challenge.recommendation}")
-    print(f"  Reasoning: {fp_challenge.reasoning[:200]}...")
+    print(f"\nArbitration result:", file=sys.stderr)
+    print(f"  Verdict: {fp_challenge.arbitration_verdict}", file=sys.stderr)
+    print(f"  Confidence: {fp_challenge.confidence}", file=sys.stderr)
+    print(f"  Recommendation: {fp_challenge.recommendation}", file=sys.stderr)
+    print(f"  Reasoning: {fp_challenge.reasoning[:200]}...", file=sys.stderr)
 
     # Sample FN test case
     fn_code = """
@@ -574,10 +575,10 @@ router.get('/redirect', function(req, res) {
 });
 """
 
-    print("\n--- Testing False Negative Challenge ---")
-    print(f"Code: {fn_code[:100]}...")
-    print(f"Model says: SAFE")
-    print(f"Ground truth says: VULNERABLE (Open Redirect)")
+    print("\n--- Testing False Negative Challenge ---", file=sys.stderr)
+    print(f"Code: {fn_code[:100]}...", file=sys.stderr)
+    print(f"Model says: SAFE", file=sys.stderr)
+    print(f"Ground truth says: VULNERABLE (Open Redirect)", file=sys.stderr)
 
     fn_challenge = challenger.challenge_false_negative(
         route_key="GET:/app/redirect",
@@ -585,13 +586,13 @@ router.get('/redirect', function(req, res) {
         ground_truth_vuln_type="Open Redirect"
     )
 
-    print(f"\nArbitration result:")
-    print(f"  Verdict: {fn_challenge.arbitration_verdict}")
-    print(f"  Confidence: {fn_challenge.confidence}")
-    print(f"  Recommendation: {fn_challenge.recommendation}")
-    print(f"  Reasoning: {fn_challenge.reasoning[:200]}...")
+    print(f"\nArbitration result:", file=sys.stderr)
+    print(f"  Verdict: {fn_challenge.arbitration_verdict}", file=sys.stderr)
+    print(f"  Confidence: {fn_challenge.confidence}", file=sys.stderr)
+    print(f"  Recommendation: {fn_challenge.recommendation}", file=sys.stderr)
+    print(f"  Reasoning: {fn_challenge.reasoning[:200]}...", file=sys.stderr)
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 60, file=sys.stderr)
 
 
 if __name__ == "__main__":

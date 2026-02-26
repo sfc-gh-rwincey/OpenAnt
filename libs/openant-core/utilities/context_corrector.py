@@ -13,6 +13,7 @@ Uses LLM-based semantic search instead of keyword matching.
 import json
 import os
 import subprocess
+import sys
 from typing import Optional
 
 from .llm_client import AnthropicClient, TokenTracker, get_global_tracker
@@ -107,7 +108,7 @@ def parse_missing_context_with_llm(
         if parsed and "missing_context" in parsed:
             return parsed["missing_context"]
     except Exception as e:
-        print(f"      LLM parsing failed: {e}")
+        print(f"      LLM parsing failed: {e}", file=sys.stderr)
 
     return None
 
@@ -242,7 +243,7 @@ def search_files_for_context(
     # Create batches
     batches = create_file_batches(files_to_search)
 
-    print(f"      Searching {len(files_to_search)} files in {len(batches)} batch(es)...")
+    print(f"      Searching {len(files_to_search)} files in {len(batches)} batch(es)...", file=sys.stderr)
 
     found_files = []
 
@@ -271,10 +272,10 @@ def search_files_for_context(
                                 break
 
             if result and result.get("not_found") and len(batches) == 1:
-                print(f"      Context not found: {result.get('explanation', 'unknown reason')}")
+                print(f"      Context not found: {result.get('explanation', 'unknown reason')}", file=sys.stderr)
 
         except Exception as e:
-            print(f"      Batch {i+1} search failed: {e}")
+            print(f"      Batch {i+1} search failed: {e}", file=sys.stderr)
 
     return found_files
 
@@ -392,7 +393,7 @@ class ContextCorrector:
 
         for attempt in range(self.max_retries):
             # Step 1: Parse what's missing
-            print(f"      Parsing missing context (attempt {attempt + 1})...")
+            print(f"      Parsing missing context (attempt {attempt + 1})...", file=sys.stderr)
             missing_context = parse_missing_context_with_llm(self.client, current_result)
 
             if not missing_context:
@@ -400,7 +401,7 @@ class ContextCorrector:
                 current_result["correction_status"] = "could_not_identify_missing"
                 break
 
-            print(f"      Looking for: {missing_context[:100]}...")
+            print(f"      Looking for: {missing_context[:100]}...", file=sys.stderr)
 
             # Step 2: Search source files for the missing context
             source_files = self._get_source_files()
@@ -437,7 +438,7 @@ class ContextCorrector:
                 current_result["correction_status"] = "no_new_files_to_add"
                 break
 
-            print(f"      Added {len(added_files)} files: {added_files}")
+            print(f"      Added {len(added_files)} files: {added_files}", file=sys.stderr)
 
             # Step 4: Re-analyze with expanded context
             expanded_code = current_code + "\n".join(additional_code)
@@ -463,11 +464,11 @@ class ContextCorrector:
                     new_result["correction_status"] = "success"
                     new_result["token_usage"] = self.tracker.get_totals()
                     self.correction_stats["successes"] += 1
-                    print(f"      Correction successful! New verdict: {new_result.get('verdict')}")
+                    print(f"      Correction successful! New verdict: {new_result.get('verdict')}", file=sys.stderr)
                     return new_result
 
                 # Still insufficient, try another round
-                print(f"      Still insufficient context, trying again...")
+                print(f"      Still insufficient context, trying again...", file=sys.stderr)
                 current_code = expanded_code
                 current_result = new_result
 
@@ -559,39 +560,39 @@ def test_corrector():
         }
     ]
 
-    print("Testing LLM-based Context Corrector")
-    print("=" * 60)
+    print("Testing LLM-based Context Corrector", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
 
     # Initialize client
     client = AnthropicClient()
 
     for i, test_case in enumerate(test_cases):
-        print(f"\nTest Case {i + 1}:")
-        print(f"Reasoning: {test_case['reasoning'][:100]}...")
-        print()
+        print(f"\nTest Case {i + 1}:", file=sys.stderr)
+        print(f"Reasoning: {test_case['reasoning'][:100]}...", file=sys.stderr)
+        print(file=sys.stderr)
 
         # Parse missing context
         missing = parse_missing_context_with_llm(client, test_case)
-        print(f"Missing context: {missing}")
-        print()
+        print(f"Missing context: {missing}", file=sys.stderr)
+        print(file=sys.stderr)
 
         # Test file gathering
         repo_path = "/Users/nahumkorda/code/dvna"
         if os.path.exists(repo_path):
             files = gather_source_files(repo_path)
-            print(f"Found {len(files)} source files in {repo_path}")
+            print(f"Found {len(files)} source files in {repo_path}", file=sys.stderr)
 
             batches = create_file_batches(files)
-            print(f"Created {len(batches)} batches")
+            print(f"Created {len(batches)} batches", file=sys.stderr)
 
             # Search for the missing context
             if missing:
                 found = search_files_for_context(client, missing, files, [])
-                print(f"\nFound {len(found)} relevant files:")
+                print(f"\nFound {len(found)} relevant files:", file=sys.stderr)
                 for f in found:
-                    print(f"  - {f['relative_path']} ({f.get('relevance')}): {f.get('reason', '')[:50]}")
+                    print(f"  - {f['relative_path']} ({f.get('relevance')}): {f.get('reason', '')[:50]}", file=sys.stderr)
 
-        print("-" * 60)
+        print("-" * 60, file=sys.stderr)
 
 
 if __name__ == "__main__":
