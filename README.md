@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/open-ant.png" alt="OpenAnt" width="180" />
+  <img src="assets/open-ant-black.png" alt="OpenAnt" width="180" />
 </p>
 
 # OpenAnt
