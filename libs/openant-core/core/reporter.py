@@ -216,7 +216,7 @@ def generate_html_report(
     script = _CORE_ROOT / "generate_report.py"
     cmd = [sys.executable, str(script), results_path, dataset_path, output_path]
 
-    result = subprocess.run(cmd, capture_output=False, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
         raise RuntimeError(f"HTML report generation failed (exit code {result.returncode})")
@@ -247,7 +247,7 @@ def generate_csv_report(
     script = _CORE_ROOT / "export_csv.py"
     cmd = [sys.executable, str(script), results_path, dataset_path, output_path]
 
-    result = subprocess.run(cmd, capture_output=False, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
         raise RuntimeError(f"CSV export failed (exit code {result.returncode})")
@@ -280,7 +280,7 @@ def generate_summary_report(
         "-o", output_path,
     ]
 
-    result = subprocess.run(cmd, capture_output=False, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
         raise RuntimeError(f"Summary report generation failed (exit code {result.returncode})")
@@ -312,7 +312,7 @@ def generate_disclosure_docs(
         "-o", output_dir,
     ]
 
-    result = subprocess.run(cmd, capture_output=False, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
         raise RuntimeError(f"Disclosure generation failed (exit code {result.returncode})")

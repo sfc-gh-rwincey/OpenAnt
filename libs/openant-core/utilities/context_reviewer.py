@@ -9,6 +9,7 @@ we ask the LLM upfront what's missing.
 """
 
 import json
+import sys
 from typing import Optional
 
 from .llm_client import AnthropicClient
@@ -199,18 +200,18 @@ class ContextReviewer:
             additional_files = []
             MAX_ADDITIONAL_FILES = 5  # Cap to avoid context bloat
 
-            print(f"      Context review found {len(missing_items)} potentially missing items")
+            print(f"      Context review found {len(missing_items)} potentially missing items", file=sys.stderr)
 
             source_files = self._get_source_files()
 
             for item in missing_items:
                 if len(additional_files) >= MAX_ADDITIONAL_FILES:
-                    print(f"      Reached max additional files limit ({MAX_ADDITIONAL_FILES})")
+                    print(f"      Reached max additional files limit ({MAX_ADDITIONAL_FILES})", file=sys.stderr)
                     break
 
                 item_type = item.get("type", "unknown")
                 description = item.get("description", "")[:50]
-                print(f"      Searching for {item_type}: {description}...")
+                print(f"      Searching for {item_type}: {description}...", file=sys.stderr)
 
                 # Use the existing search mechanism
                 found = search_files_for_context(
@@ -285,7 +286,7 @@ class ContextReviewer:
                 )
                 updated_files.append(f['relative_path'])
 
-        print(f"      Enhanced context with {len(review['additional_files'])} additional files")
+        print(f"      Enhanced context with {len(review['additional_files'])} additional files", file=sys.stderr)
 
         return enhanced_code, updated_files
 
@@ -334,14 +335,14 @@ def test_reviewer():
     """Test the context reviewer."""
     import os
 
-    print("Testing Context Reviewer")
-    print("=" * 60)
+    print("Testing Context Reviewer", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
 
     client = AnthropicClient()
     repo_path = "/Users/nahumkorda/code/dvna"
 
     if not os.path.exists(repo_path):
-        print(f"Repository not found: {repo_path}")
+        print(f"Repository not found: {repo_path}", file=sys.stderr)
         return
 
     reviewer = ContextReviewer(client, repo_path)
@@ -373,8 +374,8 @@ module.exports.productSearch = function (req, res) {
 
     files_included = ["routes/app.js", "core/appHandler.js"]
 
-    print("\nReviewing context for POST:/app/products...")
-    print("-" * 60)
+    print("\nReviewing context for POST:/app/products...", file=sys.stderr)
+    print("-" * 60, file=sys.stderr)
 
     result = reviewer.review_context(
         test_code,
@@ -383,18 +384,18 @@ module.exports.productSearch = function (req, res) {
         files_included
     )
 
-    print(f"\nContext complete: {result.get('context_complete', 'unknown')}")
-    print(f"Reasoning: {result.get('reasoning', 'none')}")
+    print(f"\nContext complete: {result.get('context_complete', 'unknown')}", file=sys.stderr)
+    print(f"Reasoning: {result.get('reasoning', 'none')}", file=sys.stderr)
 
     if result.get('missing_items'):
-        print(f"\nMissing items:")
+        print(f"\nMissing items:", file=sys.stderr)
         for item in result['missing_items']:
-            print(f"  - [{item.get('type')}] {item.get('description')}")
+            print(f"  - [{item.get('type')}] {item.get('description')}", file=sys.stderr)
 
     if result.get('additional_files'):
-        print(f"\nFound additional files:")
+        print(f"\nFound additional files:", file=sys.stderr)
         for f in result['additional_files']:
-            print(f"  - {f['relative_path']}")
+            print(f"  - {f['relative_path']}", file=sys.stderr)
 
 
 if __name__ == "__main__":

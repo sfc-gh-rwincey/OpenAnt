@@ -322,7 +322,8 @@ def _parse_javascript(repo_path: str, output_dir: str, processing_level: str) ->
 
     result = subprocess.run(
         cmd,
-        capture_output=False,  # Let stderr flow through
+        stdout=sys.stderr,
+        stderr=sys.stderr,
         cwd=str(_CORE_ROOT),
     )
 
@@ -373,7 +374,8 @@ def _parse_go(repo_path: str, output_dir: str, processing_level: str) -> ParseRe
 
     result = subprocess.run(
         cmd,
-        capture_output=False,  # Let stderr flow through
+        stdout=sys.stderr,
+        stderr=sys.stderr,
         cwd=str(_CORE_ROOT),
     )
 
@@ -429,7 +431,8 @@ def _parse_c(repo_path: str, output_dir: str, processing_level: str, skip_tests:
 
     result = subprocess.run(
         cmd,
-        capture_output=False,  # Let stderr flow through
+        stdout=sys.stderr,
+        stderr=sys.stderr,
         cwd=str(_CORE_ROOT),
         timeout=1800,  # 30 min timeout (C repos can be large)
     )
