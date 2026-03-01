@@ -72,6 +72,7 @@ def parse_repository(
     language: str = "auto",
     processing_level: str = "reachable",
     skip_tests: bool = True,
+    name: str = None,
 ) -> ParseResult:
     """Parse a repository into an OpenAnt dataset.
 
@@ -84,6 +85,7 @@ def parse_repository(
         language: "auto", "python", "javascript", or "go".
         processing_level: "all", "reachable", "codeql", or "exploitable".
         skip_tests: If True, exclude test files from parsing (default: True).
+        name: Dataset name override (default: derived from repo path basename).
 
     Returns:
         ParseResult with paths to generated files and stats.
@@ -103,17 +105,17 @@ def parse_repository(
 
     # Dispatch to the right parser
     if language == "python":
-        return _parse_python(repo_path, output_dir, processing_level, skip_tests)
+        return _parse_python(repo_path, output_dir, processing_level, skip_tests, name)
     elif language == "javascript":
-        return _parse_javascript(repo_path, output_dir, processing_level, skip_tests)
+        return _parse_javascript(repo_path, output_dir, processing_level, skip_tests, name)
     elif language == "go":
-        return _parse_go(repo_path, output_dir, processing_level, skip_tests)
+        return _parse_go(repo_path, output_dir, processing_level, skip_tests, name)
     elif language == "c":
-        return _parse_c(repo_path, output_dir, processing_level, skip_tests)
+        return _parse_c(repo_path, output_dir, processing_level, skip_tests, name)
     elif language == "ruby":
-        return _parse_ruby(repo_path, output_dir, processing_level, skip_tests)
+        return _parse_ruby(repo_path, output_dir, processing_level, skip_tests, name)
     elif language == "php":
-        return _parse_php(repo_path, output_dir, processing_level, skip_tests)
+        return _parse_php(repo_path, output_dir, processing_level, skip_tests, name)
     else:
         raise ValueError(f"Unsupported language: {language}")
 
@@ -250,7 +252,7 @@ def _apply_reachability_filter(
 # Python parser
 # ---------------------------------------------------------------------------
 
-def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True) -> ParseResult:
+def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
     """Invoke the Python parser.
 
     The Python parser has a clean `parse_repository()` function that we can
@@ -269,7 +271,7 @@ def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_t
     analyzer_output_path = os.path.join(output_dir, "analyzer_output.json")
 
     options = {
-        "dataset_name": Path(repo_path).name,
+        "dataset_name": name or Path(repo_path).name,
         "output_dir": output_dir,  # For intermediate files
         "skip_tests": skip_tests,
     }
@@ -303,7 +305,7 @@ def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_t
 # JavaScript/TypeScript parser
 # ---------------------------------------------------------------------------
 
-def _parse_javascript(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True) -> ParseResult:
+def _parse_javascript(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
     """Invoke the JavaScript/TypeScript parser.
 
     The JS parser is a PipelineTest class that runs Node.js subprocesses.
@@ -321,6 +323,8 @@ def _parse_javascript(repo_path: str, output_dir: str, processing_level: str, sk
         "--processing-level", processing_level,
     ]
 
+    if name:
+        cmd.extend(["--name", name])
     if skip_tests:
         cmd.append("--skip-tests")
 
@@ -359,7 +363,7 @@ def _parse_javascript(repo_path: str, output_dir: str, processing_level: str, sk
 # Go parser
 # ---------------------------------------------------------------------------
 
-def _parse_go(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True) -> ParseResult:
+def _parse_go(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
     """Invoke the Go parser.
 
     The Go parser is a PipelineTest class that calls a compiled Go binary.
@@ -376,6 +380,8 @@ def _parse_go(repo_path: str, output_dir: str, processing_level: str, skip_tests
         "--processing-level", processing_level,
     ]
 
+    if name:
+        cmd.extend(["--name", name])
     if skip_tests:
         cmd.append("--skip-tests")
 
@@ -414,7 +420,7 @@ def _parse_go(repo_path: str, output_dir: str, processing_level: str, skip_tests
 # C/C++ parser
 # ---------------------------------------------------------------------------
 
-def _parse_c(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True) -> ParseResult:
+def _parse_c(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
     """Invoke the C/C++ parser.
 
     The C parser uses tree-sitter for function extraction and call graph
@@ -433,6 +439,8 @@ def _parse_c(repo_path: str, output_dir: str, processing_level: str, skip_tests:
         "--processing-level", processing_level,
     ]
 
+    if name:
+        cmd.extend(["--name", name])
     if skip_tests:
         cmd.append("--skip-tests")
 
@@ -472,7 +480,7 @@ def _parse_c(repo_path: str, output_dir: str, processing_level: str, skip_tests:
 # Ruby parser
 # ---------------------------------------------------------------------------
 
-def _parse_ruby(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True) -> ParseResult:
+def _parse_ruby(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
     """Invoke the Ruby parser.
 
     The Ruby parser uses tree-sitter for function extraction and call graph
@@ -491,6 +499,8 @@ def _parse_ruby(repo_path: str, output_dir: str, processing_level: str, skip_tes
         "--processing-level", processing_level,
     ]
 
+    if name:
+        cmd.extend(["--name", name])
     if skip_tests:
         cmd.append("--skip-tests")
 
@@ -530,7 +540,7 @@ def _parse_ruby(repo_path: str, output_dir: str, processing_level: str, skip_tes
 # PHP parser
 # ---------------------------------------------------------------------------
 
-def _parse_php(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True) -> ParseResult:
+def _parse_php(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
     """Invoke the PHP parser.
 
     The PHP parser uses tree-sitter for function extraction and call graph
@@ -549,6 +559,8 @@ def _parse_php(repo_path: str, output_dir: str, processing_level: str, skip_test
         "--processing-level", processing_level,
     ]
 
+    if name:
+        cmd.extend(["--name", name])
     if skip_tests:
         cmd.append("--skip-tests")
 

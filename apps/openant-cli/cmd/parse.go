@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"strings"
 
 	"github.com/knostic/open-ant-cli/internal/output"
 	"github.com/knostic/open-ant-cli/internal/python"
@@ -63,7 +64,21 @@ func runParse(cmd *cobra.Command, args []string) {
 		os.Exit(2)
 	}
 
+	// Construct dataset name from project metadata: org-repo-shortSHA
+	var datasetName string
+	if ctx != nil && ctx.Project != nil {
+		slug := strings.ReplaceAll(ctx.Project.Name, "/", "-")
+		if ctx.Project.CommitSHAShort != "" {
+			datasetName = slug + "-" + ctx.Project.CommitSHAShort
+		} else {
+			datasetName = slug
+		}
+	}
+
 	pyArgs := []string{"parse", repoPath, "--output", parseOutput}
+	if datasetName != "" {
+		pyArgs = append(pyArgs, "--name", datasetName)
+	}
 	if parseLanguage != "auto" {
 		pyArgs = append(pyArgs, "--language", parseLanguage)
 	}
