@@ -4,15 +4,37 @@
 
 # OpenAnt
 
-LLM-powered static analysis that finds real, exploitable vulnerabilities — then simulates an attacker to eliminate false positives. Stage 1 detects. Stage 2 attacks. What survives is real.
+OpenAnt from [Knostic](https://knostic.ai) is an open source LLM-based vulnerability discovery product that helps defenders proactively find verified security flaws while minimizing both false positives and false negatives. Stage 1 detects. Stage 2 attacks. What survives is real.
 
-Supported languages:
+We're pretty proud of this product and are in the disclosure process for its findings, but do keep in mind that this started as a research project with some of its features still in beta, and we welcome contributions to make it better.
 
+## Why open source?
+Considering the explosion of AI-discovered vulnerabilities, we hope OpenAnt will be the tool helping open source maintainers stay ahead of attackers, where they can use it themselves or submit their repo for scanning at no cost.
+
+Then, since Knostic's focus is on protecting agents and coding assistants and not vulnerability research or application security, and we like open source, we decided to release OpenAnt under the Apache 2 license.
+Besides, you may have heard about Aardvark from OpenAI (now Codex Security) and Claude Code Security from Anthropic, and we have zero intention of competing with them.
+
+## Technical details and free scanning
+For technical details, limitations, and token costs, check out this blog post:
+
+To submit your repo for scanning:
+
+## Supported languages
 - Go
 - Python
-- JavaScript (coming soon)
-- C/C++ (coming soon)
+- JavaScript/TypeScript
+- C/C++
+- PHP
 - Ruby (coming soon)
+
+## Credit
+Research: Nahum Korda.
+Productization: Alex Raihelgaus, Daniel Geyshis.
+With thanks to: Michal Kamensky, Imri Goldberg, Gadi Evron, Daniel Cuthbert. Josh Grossman, and Avi Douglen.
+
+## Check out Knostic
+**If you like our work**, check out what we do at [Knostic](https://knostic.ai) to defend your agents and coding assistants, prevent them from deleting your hard drive and code, and control associated supply chain risks such as MCP servers, extensions, and skills.
+
 
 ## Local setup
 
@@ -107,3 +129,13 @@ openant project list              # shows all projects, marks active
 openant project show              # details of active project
 openant project switch <org/repo> # switch active project
 ```
+
+
+## LICENSE
+This project is licensed under Apache 2. See the LICENSE file for details.
+
+
+## Disclaimer and legal notice
+This project is intended for defensive and research purposes only. OpenAnt is still in the research phase, use it carefully and at your own risk. Knostic, OpenAnt, and associated developers, researchers, and maintainers assume no responsibility whatsoever for any misuse, damage, or consequences arising from the use of this tool.
+
+Only scan code you own or have explicit permission to test. If you discover a vulnerability in someone else's project through legitimate means, please follow coordinated vulnerability disclosure practices and report it to the maintainers before making it public.
