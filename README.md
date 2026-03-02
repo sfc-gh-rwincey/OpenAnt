@@ -30,7 +30,7 @@ To submit your repo for scanning:
 - Ruby (beta)
 
 ## Credits
-Research: [Nahum Korda](https://github.com/NahumKorda/).
+Research and ideation: [Nahum Korda](https://github.com/NahumKorda/).
 
 Productization: Alex Raihelgaus, Daniel Geyshis.
 
