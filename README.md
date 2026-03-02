@@ -29,7 +29,9 @@ To submit your repo for scanning:
 
 ## Credit
 Research: Nahum Korda.
+
 Productization: Alex Raihelgaus, Daniel Geyshis.
+
 With thanks to: Michal Kamensky, Imri Goldberg, Gadi Evron, Daniel Cuthbert. Josh Grossman, and Avi Douglen.
 
 ## Check out Knostic
