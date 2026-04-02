@@ -15,10 +15,11 @@ from typing import Optional
 from dataclasses import dataclass
 
 from utilities.llm_client import AnthropicClient, TokenTracker
+from utilities.snowflake_client import map_model_name
 
 
-# Use a cheaper/faster model for consistency checks
-CONSISTENCY_MODEL = "claude-sonnet-4-20250514"
+# Use Opus model for consistency checks (better accuracy)
+CONSISTENCY_MODEL = map_model_name("claude-opus-4-20250514")
 MAX_TOKENS = 4096
 
 
@@ -252,7 +253,8 @@ def run_stage1_consistency_check(
                                     step="detect", unit_id=route_key)
 
         except Exception as e:
-            log("error", f"Stage 1 consistency resolution failed: {e}", step="detect")
+            log("error",
+                f"Stage 1 consistency resolution failed: {e}", step="detect")
 
     return results
 
@@ -290,8 +292,10 @@ def _resolve_stage1_inconsistency(
 
             if result.get("are_equivalent", False):
                 return Stage1ConsistencyResult(
-                    pattern_identified=result.get("pattern_identified", "unknown"),
-                    consistent_verdict=result.get("consistent_verdict", "INCONCLUSIVE"),
+                    pattern_identified=result.get(
+                        "pattern_identified", "unknown"),
+                    consistent_verdict=result.get(
+                        "consistent_verdict", "INCONCLUSIVE"),
                     findings_updated=result.get("findings_to_update", []),
                     explanation=result.get("explanation", "")
                 )

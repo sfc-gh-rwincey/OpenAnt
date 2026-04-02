@@ -22,11 +22,15 @@ from typing import Optional
 import anthropic
 from dotenv import load_dotenv
 
+from utilities.snowflake_client import create_cortex_client, map_model_name
+
 
 # Pricing per million tokens (as of December 2024)
 MODEL_PRICING = {
     "claude-opus-4-20250514": {"input": 15.00, "output": 75.00},
+    "claude-opus-4-6": {"input": 15.00, "output": 75.00},
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     # Fallback for unknown models (use Sonnet pricing as conservative estimate)
     "default": {"input": 3.00, "output": 15.00}
 }
@@ -143,21 +147,18 @@ class AnthropicClient:
 
     def __init__(self, model: str = "claude-opus-4-20250514", tracker: TokenTracker = None):
         """
-        Initialize the Anthropic client.
+        Initialize the Anthropic client via Snowflake Cortex.
 
         Args:
             model: Model identifier. Default is Claude Opus 4 (highest capability).
                    Use "claude-sonnet-4-20250514" for cost-effective option.
+                   Model names are mapped to Snowflake Cortex equivalents.
             tracker: Optional TokenTracker instance. Uses global tracker if not provided.
         """
         load_dotenv()
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment")
-
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = model
+        self.client = create_cortex_client()
+        self.model = map_model_name(model)
         self.tracker = tracker or _global_tracker
         self.last_call = None  # Store last call details
 
@@ -202,7 +203,7 @@ class AnthropicClient:
         Returns:
             Response text from Claude
         """
-        used_model = model or self.model
+        used_model = map_model_name(model) if model else self.model
 
         kwargs = {
             "model": used_model,

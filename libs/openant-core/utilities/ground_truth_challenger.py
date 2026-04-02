@@ -209,7 +209,7 @@ class GroundTruthChallenger:
     2. Validate false negatives - did the model miss something, or is the ground truth wrong?
     """
 
-    def __init__(self, client: AnthropicClient, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, client: AnthropicClient, model: str = "claude-opus-4-20250514"):
         """
         Initialize the challenger.
 

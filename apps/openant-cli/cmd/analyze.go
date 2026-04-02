@@ -97,7 +97,8 @@ func runAnalyze(cmd *cobra.Command, args []string) {
 		pyArgs = append(pyArgs, "--model", analyzeModel)
 	}
 
-	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, requireAPIKey())
+	pat, account, user := requireSnowflakeCreds()
+	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, pat, account, user)
 	if err != nil {
 		output.PrintError(err.Error())
 		os.Exit(2)

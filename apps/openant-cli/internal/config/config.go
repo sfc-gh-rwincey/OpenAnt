@@ -16,9 +16,11 @@ import (
 
 // Config holds the persistent CLI configuration.
 type Config struct {
-	APIKey        string `json:"api_key,omitempty"`
-	DefaultModel  string `json:"default_model,omitempty"`
-	ActiveProject string `json:"active_project,omitempty"`
+	SnowflakePAT     string `json:"snowflake_pat,omitempty"`
+	SnowflakeAccount string `json:"snowflake_account,omitempty"`
+	SnowflakeUser    string `json:"snowflake_user,omitempty"`
+	DefaultModel     string `json:"default_model,omitempty"`
+	ActiveProject    string `json:"active_project,omitempty"`
 }
 
 // configDir returns the base directory for openant config files.
@@ -110,16 +112,16 @@ func Save(cfg *Config) error {
 	return nil
 }
 
-// ResolveAPIKey returns the API key using the precedence:
+// ResolveSnowflakePAT returns the PAT using the precedence:
 //
 //	flag > config file
 //
 // Environment variables and .env files are intentionally NOT checked.
-// Users must explicitly configure their key via `openant set-api-key`
-// or pass it with --api-key.
+// Users must explicitly configure their PAT via `openant config set snowflake-pat`
+// or pass it with --snowflake-pat.
 //
-// Returns empty string if no key is found.
-func ResolveAPIKey(flagValue string) string {
+// Returns empty string if no PAT is found.
+func ResolveSnowflakePAT(flagValue string) string {
 	if flagValue != "" {
 		return flagValue
 	}
@@ -128,7 +130,31 @@ func ResolveAPIKey(flagValue string) string {
 	if err != nil {
 		return ""
 	}
-	return cfg.APIKey
+	return cfg.SnowflakePAT
+}
+
+// ResolveSnowflakeAccount returns the account using the precedence:
+//
+//	flag > config file
+func ResolveSnowflakeAccount(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		return ""
+	}
+	return cfg.SnowflakeAccount
+}
+
+// ResolveSnowflakeUser returns the user from the config file.
+func ResolveSnowflakeUser() string {
+	cfg, err := Load()
+	if err != nil {
+		return ""
+	}
+	return cfg.SnowflakeUser
 }
 
 // DataDir returns the root data directory: ~/.openant/

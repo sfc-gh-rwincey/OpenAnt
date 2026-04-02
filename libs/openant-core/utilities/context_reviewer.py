@@ -176,7 +176,7 @@ class ContextReviewer:
         prompt = get_context_review_prompt(code, route, handler, files_included)
 
         try:
-            response = self.client.analyze_sync(prompt, model="claude-sonnet-4-20250514")
+            response = self.client.analyze_sync(prompt, model="claude-opus-4-20250514")
             review = self._parse_json_response(response)
 
             if not review:

@@ -29,8 +29,8 @@ _null_logger = logging.getLogger("null")
 _null_logger.addHandler(logging.NullHandler())
 
 
-# Use Sonnet for context enhancement (cost-effective auxiliary task)
-CONTEXT_ENHANCEMENT_MODEL = "claude-sonnet-4-20250514"
+# Use Opus for context enhancement (better capability)
+CONTEXT_ENHANCEMENT_MODEL = "claude-opus-4-20250514"
 
 
 def get_context_enhancement_prompt(

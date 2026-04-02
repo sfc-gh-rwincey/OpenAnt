@@ -19,23 +19,24 @@ var configCmd = &cobra.Command{
 Configuration is stored in ~/.config/openant/config.json.
 
 Examples:
-  openant config set api-key        Set your Anthropic API key (interactive)
-  openant config show               View current configuration
-  openant config unset api-key      Remove your API key
-  openant config path               Print the config file path`,
+  openant config set snowflake-pat       Set your Snowflake PAT (interactive)
+  openant config set snowflake-account   Set your Snowflake account
+  openant config show                    View current configuration
+  openant config unset snowflake-pat     Remove your PAT
+  openant config path                    Print the config file path`,
 }
 
 var configSetCmd = &cobra.Command{
 	Use:   "set <key>",
 	Short: "Set a configuration value",
-	Long: `Set a configuration value. For sensitive values like api-key,
+	Long: `Set a configuration value. For sensitive values like snowflake-pat,
 the value is read from stdin (not echoed) to avoid shell history exposure.
 
-Supported keys: api-key, default-model
+Supported keys: snowflake-pat, snowflake-account, snowflake-user, default-model
 
 Examples:
-  openant config set api-key              Interactive prompt (recommended)
-  echo "sk-ant-..." | openant config set api-key --stdin   Piped input`,
+  openant config set snowflake-pat              Interactive prompt (recommended)
+  echo "pat-value" | openant config set snowflake-pat --stdin   Piped input`,
 	Args: cobra.ExactArgs(1),
 	Run:  runConfigSet,
 }
@@ -82,7 +83,7 @@ func runConfigSet(cmd *cobra.Command, args []string) {
 	var value string
 
 	switch key {
-	case "api-key":
+	case "snowflake-pat":
 		if configStdin {
 			// Read from stdin (piped)
 			scanner := bufio.NewScanner(os.Stdin)
@@ -91,7 +92,7 @@ func runConfigSet(cmd *cobra.Command, args []string) {
 			}
 		} else {
 			// Interactive prompt
-			fmt.Fprint(os.Stderr, "Enter API key: ")
+			fmt.Fprint(os.Stderr, "Enter Snowflake PAT: ")
 			scanner := bufio.NewScanner(os.Stdin)
 			if scanner.Scan() {
 				value = strings.TrimSpace(scanner.Text())
@@ -103,7 +104,49 @@ func runConfigSet(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 
-		cfg.APIKey = value
+		cfg.SnowflakePAT = value
+
+	case "snowflake-account":
+		if configStdin {
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				value = strings.TrimSpace(scanner.Text())
+			}
+		} else {
+			fmt.Fprint(os.Stderr, "Enter Snowflake account identifier: ")
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				value = strings.TrimSpace(scanner.Text())
+			}
+		}
+
+		if value == "" {
+			output.PrintError("No value provided")
+			os.Exit(1)
+		}
+
+		cfg.SnowflakeAccount = value
+
+	case "snowflake-user":
+		if configStdin {
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				value = strings.TrimSpace(scanner.Text())
+			}
+		} else {
+			fmt.Fprint(os.Stderr, "Enter Snowflake username: ")
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				value = strings.TrimSpace(scanner.Text())
+			}
+		}
+
+		if value == "" {
+			output.PrintError("No value provided")
+			os.Exit(1)
+		}
+
+		cfg.SnowflakeUser = value
 
 	case "default-model":
 		if configStdin {
@@ -127,7 +170,7 @@ func runConfigSet(cmd *cobra.Command, args []string) {
 		cfg.DefaultModel = value
 
 	default:
-		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: api-key, default-model", key))
+		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: snowflake-pat, snowflake-account, snowflake-user, default-model", key))
 		os.Exit(1)
 	}
 
@@ -150,7 +193,13 @@ func runConfigShow(cmd *cobra.Command, args []string) {
 	path, _ := config.Path()
 
 	output.PrintHeader("Configuration")
-	output.PrintKeyValue("api_key", config.MaskKey(cfg.APIKey))
+	output.PrintKeyValue("snowflake_pat", config.MaskKey(cfg.SnowflakePAT))
+	if cfg.SnowflakeAccount != "" {
+		output.PrintKeyValue("snowflake_account", cfg.SnowflakeAccount)
+	}
+	if cfg.SnowflakeUser != "" {
+		output.PrintKeyValue("snowflake_user", cfg.SnowflakeUser)
+	}
 	if cfg.DefaultModel != "" {
 		output.PrintKeyValue("default_model", cfg.DefaultModel)
 	}
@@ -171,12 +220,16 @@ func runConfigUnset(cmd *cobra.Command, args []string) {
 	}
 
 	switch key {
-	case "api-key":
-		cfg.APIKey = ""
+	case "snowflake-pat":
+		cfg.SnowflakePAT = ""
+	case "snowflake-account":
+		cfg.SnowflakeAccount = ""
+	case "snowflake-user":
+		cfg.SnowflakeUser = ""
 	case "default-model":
 		cfg.DefaultModel = ""
 	default:
-		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: api-key, default-model", key))
+		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: snowflake-pat, snowflake-account, snowflake-user, default-model", key))
 		os.Exit(1)
 	}
 

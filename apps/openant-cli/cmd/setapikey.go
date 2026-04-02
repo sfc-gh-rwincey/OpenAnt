@@ -12,17 +12,17 @@ import (
 
 var setAPIKeyCmd = &cobra.Command{
 	Use:   "set-api-key <key>",
-	Short: "Save your Anthropic API key",
-	Long: `Save your Anthropic API key to the OpenAnt config file.
+	Short: "Save your Snowflake PAT (deprecated: use 'config set snowflake-pat')",
+	Long: `Save your Snowflake PAT to the OpenAnt config file.
 
 The key is stored in ~/.config/openant/config.json with restricted
 permissions (0600). This is required before running enhance, analyze,
 verify, or scan.
 
-Get an API key at https://console.anthropic.com/settings/keys
+Generate a PAT in Snowsight: Settings → Authentication → Programmatic Access Tokens
 
 Examples:
-  openant set-api-key sk-ant-api03-...`,
+  openant set-api-key <your-snowflake-pat>`,
 	Args: cobra.ExactArgs(1),
 	Run:  runSetAPIKey,
 }
@@ -30,7 +30,7 @@ Examples:
 func runSetAPIKey(cmd *cobra.Command, args []string) {
 	key := strings.TrimSpace(args[0])
 	if key == "" {
-		output.PrintError("API key cannot be empty")
+		output.PrintError("PAT cannot be empty")
 		os.Exit(1)
 	}
 
@@ -40,7 +40,7 @@ func runSetAPIKey(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	cfg.APIKey = key
+	cfg.SnowflakePAT = key
 
 	if err := config.Save(cfg); err != nil {
 		output.PrintError(err.Error())
@@ -48,6 +48,6 @@ func runSetAPIKey(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Fprintf(os.Stderr, "\n")
-	output.PrintSuccess(fmt.Sprintf("API key saved (%s)", config.MaskKey(key)))
+	output.PrintSuccess(fmt.Sprintf("Snowflake PAT saved (%s)", config.MaskKey(key)))
 	fmt.Fprintf(os.Stderr, "\n")
 }

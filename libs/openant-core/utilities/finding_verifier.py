@@ -28,6 +28,14 @@ Classes:
     FindingVerifier: Main verifier class with verify_result() and verify_batch() methods
 """
 
+from prompts.verification_prompts import (
+    VERIFICATION_SYSTEM_PROMPT,
+    get_verification_prompt,
+    get_verification_system_prompt,
+    get_consistency_check_prompt
+)
+from .agentic_enhancer.tools import ToolExecutor
+from .agentic_enhancer.repository_index import RepositoryIndex
 import json
 import logging
 import re
@@ -38,18 +46,11 @@ from typing import Callable, Optional
 import anthropic
 
 from .llm_client import TokenTracker, get_global_tracker
+from .snowflake_client import create_cortex_client, map_model_name
 
 # Null logger that discards all messages (used when no logger provided)
 _null_logger = logging.getLogger("null_verifier")
 _null_logger.addHandler(logging.NullHandler())
-from .agentic_enhancer.repository_index import RepositoryIndex
-from .agentic_enhancer.tools import ToolExecutor
-from prompts.verification_prompts import (
-    VERIFICATION_SYSTEM_PROMPT,
-    get_verification_prompt,
-    get_verification_system_prompt,
-    get_consistency_check_prompt
-)
 
 # Import application context type for type hints
 try:
@@ -58,7 +59,7 @@ except ImportError:
     ApplicationContext = None
 
 
-VERIFIER_MODEL = "claude-opus-4-6"
+VERIFIER_MODEL = map_model_name("claude-opus-4-6")
 MAX_ITERATIONS = 20
 MAX_TOKENS_PER_RESPONSE = 4096
 
@@ -266,7 +267,7 @@ class FindingVerifier:
         self.verbose = verbose
         self.app_context = app_context
         self.tool_executor = ToolExecutor(index)
-        self.client = anthropic.Anthropic()
+        self.client = create_cortex_client()
         self.logger = logger or _null_logger
         self._use_logger = logger is not None
 
@@ -277,7 +278,8 @@ class FindingVerifier:
             log_func(msg, extra=extras)
         elif self.verbose:
             # Fallback to print for CLI usage
-            suffix = " ".join(f"{k}={v}" for k, v in extras.items() if v is not None)
+            suffix = " ".join(f"{k}={v}" for k,
+                              v in extras.items() if v is not None)
             print(f"    {msg} {suffix}" if suffix else f"    {msg}")
 
     def verify_result(
@@ -321,7 +323,8 @@ class FindingVerifier:
         while iterations < MAX_ITERATIONS:
             iterations += 1
 
-            self._log("debug", f"Iteration {iterations}", iterations=iterations)
+            self._log(
+                "debug", f"Iteration {iterations}", iterations=iterations)
 
             response = self.client.messages.create(
                 model=VERIFIER_MODEL,
@@ -376,7 +379,8 @@ class FindingVerifier:
                         })
                         break
                     else:
-                        result = self.tool_executor.execute(tool_name, tool_input)
+                        result = self.tool_executor.execute(
+                            tool_name, tool_input)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_use_id,
@@ -394,7 +398,8 @@ class FindingVerifier:
                     total_input_tokens + total_output_tokens
                 )
 
-            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append(
+                {"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
         # Max iterations reached
@@ -466,7 +471,8 @@ class FindingVerifier:
 
             except Exception as e:
                 detail = "error"
-                self._log("error", f"Verification failed", unit_id=route_key, error=str(e))
+                self._log("error", f"Verification failed",
+                          unit_id=route_key, error=str(e))
 
             unit_elapsed = time.monotonic() - unit_start
             if progress_callback:
@@ -498,22 +504,26 @@ class FindingVerifier:
             if len(group) < 2:
                 continue
 
-            verdicts = set(r.get("verification", {}).get("correct_finding") or r.get("finding") for r in group)
+            verdicts = set(r.get("verification", {}).get(
+                "correct_finding") or r.get("finding") for r in group)
             if len(verdicts) > 1:
                 inconsistent_groups.append((pattern, group))
 
         if not inconsistent_groups:
-            self._log("info", "Consistency check: All similar patterns have consistent verdicts")
+            self._log(
+                "info", "Consistency check: All similar patterns have consistent verdicts")
             return results
 
         # Fix inconsistencies
         for pattern, group in inconsistent_groups:
-            verdicts = [r.get("verification", {}).get("correct_finding") or r.get("finding") for r in group]
+            verdicts = [r.get("verification", {}).get(
+                "correct_finding") or r.get("finding") for r in group]
             self._log("warning", f"Inconsistency detected in pattern: {pattern}",
                       details={"findings": [r.get('route_key') for r in group], "verdicts": verdicts})
 
             # Run consistency check
-            consistency_result = self._resolve_inconsistency(group, code_by_route)
+            consistency_result = self._resolve_inconsistency(
+                group, code_by_route)
 
             if consistency_result:
                 # Apply consistent verdict, but respect exploit path analysis
@@ -529,7 +539,8 @@ class FindingVerifier:
                                           unit_id=route_key)
                                 continue
 
-                            old_verdict = result.get("verification", {}).get("correct_finding") or result.get("finding")
+                            old_verdict = result.get("verification", {}).get(
+                                "correct_finding") or result.get("finding")
                             if old_verdict != new_verdict:
                                 result["finding"] = new_verdict
                                 if "verification" not in result:
@@ -573,7 +584,8 @@ class FindingVerifier:
 
         # Check if the exploit path analysis shows the path is broken
         sink_reached = exploit_path.get("sink_reached", True)
-        attacker_control = exploit_path.get("attacker_control_at_sink", "unknown")
+        attacker_control = exploit_path.get(
+            "attacker_control_at_sink", "unknown")
         path_broken_at = exploit_path.get("path_broken_at")
 
         # Conclusive if: path is broken OR sink not reached OR no attacker control
@@ -642,8 +654,10 @@ class FindingVerifier:
 
             if result:
                 return ConsistencyCheckResult(
-                    pattern_identified=result.get("pattern_identified", "unknown"),
-                    consistent_verdict=result.get("consistent_verdict", "inconclusive"),
+                    pattern_identified=result.get(
+                        "pattern_identified", "unknown"),
+                    consistent_verdict=result.get(
+                        "consistent_verdict", "inconclusive"),
                     findings_updated=result.get("findings_to_update", []),
                     explanation=result.get("explanation", "")
                 )
@@ -669,13 +683,15 @@ class FindingVerifier:
                 entry_point=ep.get("entry_point"),
                 data_flow=ep.get("data_flow", []),
                 sink_reached=ep.get("sink_reached", False),
-                attacker_control_at_sink=ep.get("attacker_control_at_sink", "none"),
+                attacker_control_at_sink=ep.get(
+                    "attacker_control_at_sink", "none"),
                 path_broken_at=ep.get("path_broken_at")
             )
 
         return VerificationResult(
             agree=finish_result.get("agree", True),
-            correct_finding=finish_result.get("correct_finding", original_finding),
+            correct_finding=finish_result.get(
+                "correct_finding", original_finding),
             explanation=finish_result.get("explanation", ""),
             iterations=iterations,
             total_tokens=total_tokens,

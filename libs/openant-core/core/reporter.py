@@ -74,13 +74,15 @@ def build_pipeline_output(
         confirmed = [
             r for r in all_results
             if r.get("finding", r.get("verdict", "").lower()) in ("vulnerable", "bypassable")
-            and r.get("verification", {}).get("agree", True)  # unverified = assume confirmed
+            # unverified = assume confirmed
+            and r.get("verification", {}).get("agree", True)
         ]
 
     # Build findings in PipelineOutput schema
     findings_data = []
     for i, finding in enumerate(confirmed):
-        route_key = finding.get("route_key") or finding.get("unit_id", "unknown")
+        route_key = finding.get("route_key") or finding.get(
+            "unit_id", "unknown")
 
         # Look up full result for extra fields
         full_result = next(
@@ -99,7 +101,8 @@ def build_pipeline_output(
             or full_result.get("reasoning")
         )
 
-        vulnerable_code = vuln.get("vulnerable_code") or code_by_route.get(route_key)
+        vulnerable_code = vuln.get(
+            "vulnerable_code") or code_by_route.get(route_key)
 
         impact = vuln.get("impact") or finding.get("attack_vector")
 
@@ -110,15 +113,18 @@ def build_pipeline_output(
                 parts.append(finding["attack_vector"])
             exploit_path = finding.get("exploit_path") or {}
             if exploit_path.get("data_flow"):
-                parts.append("Data flow: " + " -> ".join(exploit_path["data_flow"]))
+                parts.append("Data flow: " +
+                             " -> ".join(exploit_path["data_flow"]))
             if finding.get("verification_explanation"):
-                parts.append("Verification: " + finding["verification_explanation"])
+                parts.append("Verification: " +
+                             finding["verification_explanation"])
             steps_to_reproduce = "\n\n".join(parts) if parts else None
 
         # Determine stage2 verdict
         verification = finding.get("verification", {})
         if verification.get("agree", False):
-            stage2_verdict = "confirmed" if finding.get("exploit_path") else "agreed"
+            stage2_verdict = "confirmed" if finding.get(
+                "exploit_path") else "agreed"
         elif verification:
             stage2_verdict = "rejected"
         else:
@@ -188,7 +194,8 @@ def build_pipeline_output(
     with open(output_path, "w") as f:
         json.dump(pipeline_output, f, indent=2, ensure_ascii=False)
 
-    print(f"  pipeline_output.json: {len(findings_data)} findings", file=sys.stderr)
+    print(
+        f"  pipeline_output.json: {len(findings_data)} findings", file=sys.stderr)
     print(f"  Written to {output_path}", file=sys.stderr)
 
     return output_path
@@ -214,12 +221,15 @@ def generate_html_report(
     print("[Report] Generating HTML report...", file=sys.stderr)
 
     script = _CORE_ROOT / "generate_report.py"
-    cmd = [sys.executable, str(script), results_path, dataset_path, output_path]
+    cmd = [sys.executable, str(script), results_path,
+           dataset_path, output_path]
 
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr,
+                            stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
-        raise RuntimeError(f"HTML report generation failed (exit code {result.returncode})")
+        raise RuntimeError(
+            f"HTML report generation failed (exit code {result.returncode})")
 
     print(f"  HTML report: {output_path}", file=sys.stderr)
     return ReportResult(output_path=output_path, format="html")
@@ -245,12 +255,15 @@ def generate_csv_report(
     print("[Report] Generating CSV report...", file=sys.stderr)
 
     script = _CORE_ROOT / "export_csv.py"
-    cmd = [sys.executable, str(script), results_path, dataset_path, output_path]
+    cmd = [sys.executable, str(script), results_path,
+           dataset_path, output_path]
 
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr,
+                            stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
-        raise RuntimeError(f"CSV export failed (exit code {result.returncode})")
+        raise RuntimeError(
+            f"CSV export failed (exit code {result.returncode})")
 
     print(f"  CSV report: {output_path}", file=sys.stderr)
     return ReportResult(output_path=output_path, format="csv")
@@ -262,7 +275,7 @@ def generate_summary_report(
 ) -> ReportResult:
     """Generate LLM-based summary report (Markdown).
 
-    Wraps report/generator.py. Requires ANTHROPIC_API_KEY.
+    Wraps report/generator.py. Requires SNOWFLAKE_PAT and SNOWFLAKE_ACCOUNT.
 
     Args:
         results_path: Path to results JSON (pipeline output format).
@@ -280,10 +293,12 @@ def generate_summary_report(
         "-o", output_path,
     ]
 
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr,
+                            stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
-        raise RuntimeError(f"Summary report generation failed (exit code {result.returncode})")
+        raise RuntimeError(
+            f"Summary report generation failed (exit code {result.returncode})")
 
     print(f"  Summary report: {output_path}", file=sys.stderr)
     return ReportResult(output_path=output_path, format="summary")
@@ -295,7 +310,7 @@ def generate_disclosure_docs(
 ) -> ReportResult:
     """Generate per-vulnerability disclosure documents.
 
-    Wraps report/generator.py disclosures command. Requires ANTHROPIC_API_KEY.
+    Wraps report/generator.py disclosures command. Requires SNOWFLAKE_PAT and SNOWFLAKE_ACCOUNT.
 
     Args:
         results_path: Path to results JSON (pipeline output format).
@@ -312,10 +327,12 @@ def generate_disclosure_docs(
         "-o", output_dir,
     ]
 
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=str(_CORE_ROOT))
+    result = subprocess.run(cmd, stdout=sys.stderr,
+                            stderr=sys.stderr, cwd=str(_CORE_ROOT))
 
     if result.returncode != 0:
-        raise RuntimeError(f"Disclosure generation failed (exit code {result.returncode})")
+        raise RuntimeError(
+            f"Disclosure generation failed (exit code {result.returncode})")
 
     print(f"  Disclosures: {output_dir}", file=sys.stderr)
     return ReportResult(output_path=output_dir, format="disclosure")

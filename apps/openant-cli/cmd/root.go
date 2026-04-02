@@ -14,10 +14,11 @@ var version = "dev"
 
 // Persistent flags shared across commands.
 var (
-	jsonOutput  bool
-	quiet       bool
-	apiKeyFlag  string
-	projectFlag string
+	jsonOutput          bool
+	quiet               bool
+	snowflakePATFlag    string
+	snowflakeAccountFlag string
+	projectFlag         string
 )
 
 // rootCmd represents the base command when called without any subcommands.
@@ -49,32 +50,52 @@ func Execute() {
 	}
 }
 
-// resolvedAPIKey returns the API key resolved from flag > config file.
-func resolvedAPIKey() string {
-	return config.ResolveAPIKey(apiKeyFlag)
+// resolvedSnowflakePAT returns the Snowflake PAT resolved from flag > config file.
+func resolvedSnowflakePAT() string {
+	return config.ResolveSnowflakePAT(snowflakePATFlag)
 }
 
-// requireAPIKey returns the resolved API key or exits with a helpful error
-// telling the user how to configure one. Use this in commands that make
-// LLM calls (enhance, analyze, verify, scan, dynamic-test).
-func requireAPIKey() string {
-	key := resolvedAPIKey()
-	if key != "" {
-		return key
+// resolvedSnowflakeAccount returns the Snowflake account resolved from flag > config file.
+func resolvedSnowflakeAccount() string {
+	return config.ResolveSnowflakeAccount(snowflakeAccountFlag)
+}
+
+// resolvedSnowflakeUser returns the Snowflake user from config.
+func resolvedSnowflakeUser() string {
+	return config.ResolveSnowflakeUser()
+}
+
+// requireSnowflakeCreds returns the resolved Snowflake PAT and account, or exits
+// with a helpful error telling the user how to configure them.
+func requireSnowflakeCreds() (string, string, string) {
+	pat := resolvedSnowflakePAT()
+	account := resolvedSnowflakeAccount()
+	user := resolvedSnowflakeUser()
+	if pat != "" && account != "" {
+		return pat, account, user
 	}
-	fmt.Fprintln(os.Stderr, "Error: No API key configured.")
+	fmt.Fprintln(os.Stderr, "Error: Snowflake credentials not configured.")
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Run:  openant set-api-key <your-anthropic-api-key>")
+	if pat == "" {
+		fmt.Fprintln(os.Stderr, "  Missing: SNOWFLAKE_PAT")
+	}
+	if account == "" {
+		fmt.Fprintln(os.Stderr, "  Missing: SNOWFLAKE_ACCOUNT")
+	}
 	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "You can get an API key at https://console.anthropic.com/settings/keys")
+	fmt.Fprintln(os.Stderr, "Run:  openant config set snowflake-pat")
+	fmt.Fprintln(os.Stderr, "      openant config set snowflake-account")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Generate a PAT in Snowsight: Settings → Authentication → Programmatic Access Tokens")
 	os.Exit(2)
-	return "" // unreachable
+	return "", "", "" // unreachable
 }
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output raw JSON (machine-readable)")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress output")
-	rootCmd.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "Anthropic API key (overrides config)")
+	rootCmd.PersistentFlags().StringVar(&snowflakePATFlag, "snowflake-pat", "", "Snowflake PAT (overrides config)")
+	rootCmd.PersistentFlags().StringVar(&snowflakeAccountFlag, "snowflake-account", "", "Snowflake account identifier (overrides config)")
 	rootCmd.PersistentFlags().StringVarP(&projectFlag, "project", "p", "", "Project to use (overrides active project, e.g. grafana/grafana)")
 
 	rootCmd.AddCommand(initCmd)

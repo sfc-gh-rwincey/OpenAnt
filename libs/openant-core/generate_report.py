@@ -13,7 +13,7 @@ The report calls Claude (Sonnet) to generate actionable remediation guidance
 based on the vulnerability findings. This requires an API key.
 
 Requirements:
-    - ANTHROPIC_API_KEY environment variable or .env file
+    - SNOWFLAKE_PAT and SNOWFLAKE_ACCOUNT environment variables (or .env file)
     - Internet connection for Chart.js CDN
 
 Usage:
@@ -32,11 +32,13 @@ from datetime import datetime
 import anthropic
 from dotenv import load_dotenv
 
+from utilities.snowflake_client import create_cortex_client, map_model_name
+
 # Load environment variables from .env file
 load_dotenv()
 
 
-REPORT_MODEL = "claude-sonnet-4-20250514"
+REPORT_MODEL = "claude-sonnet-4-6"  # Snowflake Cortex model name
 MAX_TOKENS = 4096
 
 
@@ -106,7 +108,8 @@ def prepare_findings_summary(experiment: dict, dataset: dict) -> list:
 def generate_remediation_guidance(findings: list) -> str:
     """Call LLM to generate prioritization and remediation guidance."""
     # Filter to actionable findings only
-    actionable = [f for f in findings if f['verdict'] in ('vulnerable', 'bypassable', 'inconclusive')]
+    actionable = [f for f in findings if f['verdict']
+                  in ('vulnerable', 'bypassable', 'inconclusive')]
 
     if not actionable:
         return "<p>No vulnerabilities or security concerns found. All code units are either safe or properly protected.</p>"
@@ -138,11 +141,7 @@ Format your response as HTML (use <h3>, <p>, <ul>, <li>, <strong> tags). Do not 
 {findings_text}
 """
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not found in environment")
-
-    client = anthropic.Anthropic(api_key=api_key)
+    client = create_cortex_client()
     response = client.messages.create(
         model=REPORT_MODEL,
         max_tokens=MAX_TOKENS,
@@ -205,14 +204,21 @@ def generate_html_report(
         file_verdict_counts[v] = file_verdict_counts.get(v, 0) + 1
 
     # Prepare chart data
-    verdict_order = ['vulnerable', 'bypassable', 'inconclusive', 'protected', 'safe']
-    unit_chart_labels = json.dumps([v for v in verdict_order if v in verdict_counts])
-    unit_chart_data = json.dumps([verdict_counts.get(v, 0) for v in verdict_order if v in verdict_counts])
-    unit_chart_colors = json.dumps([get_verdict_color(v) for v in verdict_order if v in verdict_counts])
+    verdict_order = ['vulnerable', 'bypassable',
+                     'inconclusive', 'protected', 'safe']
+    unit_chart_labels = json.dumps(
+        [v for v in verdict_order if v in verdict_counts])
+    unit_chart_data = json.dumps(
+        [verdict_counts.get(v, 0) for v in verdict_order if v in verdict_counts])
+    unit_chart_colors = json.dumps(
+        [get_verdict_color(v) for v in verdict_order if v in verdict_counts])
 
-    file_chart_labels = json.dumps([v for v in verdict_order if v in file_verdict_counts])
-    file_chart_data = json.dumps([file_verdict_counts.get(v, 0) for v in verdict_order if v in file_verdict_counts])
-    file_chart_colors = json.dumps([get_verdict_color(v) for v in verdict_order if v in file_verdict_counts])
+    file_chart_labels = json.dumps(
+        [v for v in verdict_order if v in file_verdict_counts])
+    file_chart_data = json.dumps([file_verdict_counts.get(
+        v, 0) for v in verdict_order if v in file_verdict_counts])
+    file_chart_colors = json.dumps(
+        [get_verdict_color(v) for v in verdict_order if v in file_verdict_counts])
 
     # Build findings table rows
     findings_rows = ""
@@ -648,10 +654,12 @@ def generate_html_report(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate HTML security report')
+    parser = argparse.ArgumentParser(
+        description='Generate HTML security report')
     parser.add_argument('experiment', help='Path to experiment results JSON')
     parser.add_argument('dataset', help='Path to dataset JSON')
-    parser.add_argument('output', nargs='?', default='report.html', help='Output HTML path (default: report.html)')
+    parser.add_argument('output', nargs='?', default='report.html',
+                        help='Output HTML path (default: report.html)')
 
     args = parser.parse_args()
 

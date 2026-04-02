@@ -86,7 +86,7 @@ func runParse(cmd *cobra.Command, args []string) {
 		pyArgs = append(pyArgs, "--level", parseLevel)
 	}
 
-	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, resolvedAPIKey())
+	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, resolvedSnowflakePAT(), resolvedSnowflakeAccount(), resolvedSnowflakeUser())
 	if err != nil {
 		output.PrintError(err.Error())
 		os.Exit(2)

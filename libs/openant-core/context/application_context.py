@@ -32,6 +32,8 @@ from typing import Any
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
+from utilities.snowflake_client import create_cortex_client, map_model_name
+
 # Load environment variables
 load_dotenv()
 
@@ -214,7 +216,8 @@ def gather_context_sources(repo_path: Path) -> dict[str, str]:
                     content = content[:10000] + "\n\n[... truncated ...]"
                 sources[filename] = content
             except Exception as e:
-                print(f"Warning: Could not read {filename}: {e}", file=sys.stderr)
+                print(
+                    f"Warning: Could not read {filename}: {e}", file=sys.stderr)
 
     # Get directory structure (top 2 levels)
     dir_structure = get_directory_structure(repo_path, max_depth=2)
@@ -295,7 +298,8 @@ def detect_entry_points(repo_path: Path) -> str:
             for category, patterns in ENTRY_POINT_PATTERNS.items():
                 for pattern, description in patterns:
                     if re.search(pattern, content, re.IGNORECASE):
-                        findings.append(f"[{category}] {rel_path}: {description}")
+                        findings.append(
+                            f"[{category}] {rel_path}: {description}")
                         break  # One finding per file per category
 
             files_checked += 1
@@ -350,14 +354,16 @@ def check_manual_override(repo_path: Path) -> ApplicationContext | None:
 
             elif filename.endswith('.md'):
                 # Markdown format - check for JSON code block
-                json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+                json_match = re.search(
+                    r'```json\s*(.*?)\s*```', content, re.DOTALL)
                 if json_match:
                     data = json.loads(json_match.group(1))
                     data['source'] = 'manual'
                     return ApplicationContext(**data)
 
                 # Check for YAML frontmatter
-                yaml_match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+                yaml_match = re.match(
+                    r'^---\s*\n(.*?)\n---', content, re.DOTALL)
                 if yaml_match:
                     try:
                         import yaml
@@ -365,7 +371,8 @@ def check_manual_override(repo_path: Path) -> ApplicationContext | None:
                         data['source'] = 'manual'
                         return ApplicationContext(**data)
                     except ImportError:
-                        print("Warning: PyYAML not installed, cannot parse YAML frontmatter", file=sys.stderr)
+                        print(
+                            "Warning: PyYAML not installed, cannot parse YAML frontmatter", file=sys.stderr)
 
         except Exception as e:
             print(f"Warning: Could not parse {filename}: {e}", file=sys.stderr)
@@ -462,7 +469,7 @@ Respond with a JSON object (no other text):
 
 def generate_application_context(
     repo_path: Path,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-opus-4-20250514",
     force_regenerate: bool = False,
 ) -> ApplicationContext:
     """Generate application context using LLM analysis.
@@ -503,9 +510,9 @@ def generate_application_context(
 
     # Call LLM
     print(f"Generating context with {model}...", file=sys.stderr)
-    client = Anthropic()
+    client = create_cortex_client()
     response = client.messages.create(
-        model=model,
+        model=map_model_name(model),
         max_tokens=2000,
         messages=[{
             "role": "user",
@@ -527,7 +534,8 @@ def generate_application_context(
     try:
         data = json.loads(json_str)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse LLM response as JSON: {e}\nResponse: {response_text}")
+        raise ValueError(
+            f"Failed to parse LLM response as JSON: {e}\nResponse: {response_text}")
 
     data['source'] = 'llm'
 
@@ -589,14 +597,16 @@ def format_context_for_prompt(context: ApplicationContext) -> str:
     ]
 
     if type_info:
-        lines.append(f"**Type Description:** {type_info.get('description', '')}")
+        lines.append(
+            f"**Type Description:** {type_info.get('description', '')}")
         lines.append(f"**Attack Model:** {type_info.get('attack_model', '')}")
 
     lines.append(f"**Purpose:** {context.purpose}")
     lines.append("")
 
     if context.intended_behaviors:
-        lines.append("**Intended Behaviors (these are FEATURES, not vulnerabilities):**")
+        lines.append(
+            "**Intended Behaviors (these are FEATURES, not vulnerabilities):**")
         for behavior in context.intended_behaviors:
             lines.append(f"- {behavior}")
         lines.append("")
@@ -614,8 +624,10 @@ def format_context_for_prompt(context: ApplicationContext) -> str:
         lines.append("")
 
     if not context.requires_remote_trigger:
-        lines.append("**IMPORTANT:** This is a CLI tool/library. Users running this code have local access.")
-        lines.append("Only flag vulnerabilities that could be exploited by a REMOTE attacker, not by local users.")
+        lines.append(
+            "**IMPORTANT:** This is a CLI tool/library. Users running this code have local access.")
+        lines.append(
+            "Only flag vulnerabilities that could be exploited by a REMOTE attacker, not by local users.")
         lines.append("")
 
     if context.security_model:

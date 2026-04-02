@@ -443,15 +443,28 @@ if (require.main === module) {
             }
         }
 
-        const output = JSON.stringify(finalResult, null, 2);
-
         if (outputFile) {
-            fs.writeFileSync(outputFile, output);
+            // Stream JSON to file to avoid exceeding Node.js string length limits
+            // on large repositories (e.g. 50k+ functions)
+            const fd = fs.openSync(outputFile, 'w');
+            const { units, ...rest } = finalResult;
+            const header = JSON.stringify(rest, null, 2);
+            // Write everything except the closing brace, then inject "units" array
+            fs.writeSync(fd, header.slice(0, -1) + ',\n  "units": [\n');
+            for (let i = 0; i < units.length; i++) {
+                const chunk = JSON.stringify(units[i], null, 2).replace(/^/gm, '    ');
+                fs.writeSync(fd, chunk);
+                if (i < units.length - 1) fs.writeSync(fd, ',\n');
+                else fs.writeSync(fd, '\n');
+            }
+            fs.writeSync(fd, '  ]\n}\n');
+            fs.closeSync(fd);
             console.error(`Dataset generated. Results written to: ${outputFile}`);
             console.error(`Total units: ${result.statistics.totalUnits}`);
             console.error(`By type:`, result.statistics.byType);
             console.error(`Call graph: ${result.statistics.callGraph.totalEdges} edges, avg degree: ${result.statistics.callGraph.avgOutDegree}`);
         } else {
+            const output = JSON.stringify(finalResult, null, 2);
             console.log(output);
         }
 

@@ -24,8 +24,9 @@ type InvokeResult struct {
 // - stderr is streamed to the terminal in real-time (progress messages)
 // - stdout is captured and parsed as JSON
 // - Working directory is set to the openant-core lib directory if provided
-// - If apiKey is non-empty, it is injected as ANTHROPIC_API_KEY in the subprocess
-func Invoke(pythonPath string, args []string, workDir string, quiet bool, apiKey string) (*InvokeResult, error) {
+// - If snowflakePAT is non-empty, it is injected as SNOWFLAKE_PAT in the subprocess
+// - snowflakeAccount and snowflakeUser are also injected as SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER
+func Invoke(pythonPath string, args []string, workDir string, quiet bool, snowflakePAT string, snowflakeAccount string, snowflakeUser string) (*InvokeResult, error) {
 	cmdArgs := append([]string{"-m", "openant"}, args...)
 	cmd := exec.Command(pythonPath, cmdArgs...)
 
@@ -33,12 +34,18 @@ func Invoke(pythonPath string, args []string, workDir string, quiet bool, apiKey
 		cmd.Dir = workDir
 	}
 
-	// Pass through environment (Python needs ANTHROPIC_API_KEY, etc.)
-	// If an API key is provided via flag or config, inject it into the
-	// subprocess environment so Python picks it up regardless of .env files.
+	// Pass through environment (Python needs SNOWFLAKE_PAT, SNOWFLAKE_ACCOUNT, etc.)
+	// If credentials are provided via flag or config, inject them into the
+	// subprocess environment so Python picks them up regardless of .env files.
 	cmd.Env = os.Environ()
-	if apiKey != "" {
-		cmd.Env = setEnv(cmd.Env, "ANTHROPIC_API_KEY", apiKey)
+	if snowflakePAT != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_PAT", snowflakePAT)
+	}
+	if snowflakeAccount != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_ACCOUNT", snowflakeAccount)
+	}
+	if snowflakeUser != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_USER", snowflakeUser)
 	}
 
 	// Capture stdout (JSON output)

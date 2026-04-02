@@ -17,6 +17,7 @@ from typing import Optional, Set, List
 import anthropic
 
 from ..llm_client import TokenTracker, get_global_tracker
+from ..snowflake_client import create_cortex_client, map_model_name
 from .repository_index import RepositoryIndex
 from .tools import TOOL_DEFINITIONS, ToolExecutor
 from .prompts import SYSTEM_PROMPT, get_user_prompt
@@ -25,7 +26,7 @@ from .reachability_analyzer import ReachabilityAnalyzer
 
 
 # Use Sonnet for exploration (cost-effective)
-AGENT_MODEL = "claude-sonnet-4-20250514"
+AGENT_MODEL = map_model_name("claude-opus-4-20250514")
 
 # Safety limits
 MAX_ITERATIONS = 20
@@ -114,8 +115,8 @@ class ContextAgent:
         self.entry_points = entry_points or set()
         self.reachability = reachability
 
-        # Initialize Anthropic client
-        self.client = anthropic.Anthropic()
+        # Initialize Anthropic client via Snowflake Cortex
+        self.client = create_cortex_client()
 
     def analyze_unit(
         self,
@@ -145,10 +146,13 @@ class ContextAgent:
         reaching_entry_point: Optional[str] = None
 
         if self.reachability:
-            reachable_from_entry = self.reachability.is_reachable_from_entry_point(unit_id)
+            reachable_from_entry = self.reachability.is_reachable_from_entry_point(
+                unit_id)
             if reachable_from_entry:
-                entry_point_path = self.reachability.get_entry_point_path(unit_id)
-                reaching_entry_point = self.reachability.get_reaching_entry_point(unit_id)
+                entry_point_path = self.reachability.get_entry_point_path(
+                    unit_id)
+                reaching_entry_point = self.reachability.get_reaching_entry_point(
+                    unit_id)
 
         # Build initial prompt with reachability info
         user_prompt = get_user_prompt(
@@ -230,7 +234,8 @@ class ContextAgent:
                     tool_use_id = block.id
 
                     if self.verbose:
-                        print(f"    Tool: {tool_name}({json.dumps(tool_input)[:100]}...)")
+                        print(
+                            f"    Tool: {tool_name}({json.dumps(tool_input)[:100]}...)")
 
                     # Execute tool
                     result = self.tool_executor.execute(tool_name, tool_input)
@@ -266,10 +271,13 @@ class ContextAgent:
                 )
 
                 return AgentResult(
-                    include_functions=finish_result.get("include_functions", []),
+                    include_functions=finish_result.get(
+                        "include_functions", []),
                     usage_context=finish_result.get("usage_context", ""),
-                    security_classification=finish_result.get("security_classification", "neutral"),
-                    classification_reasoning=finish_result.get("classification_reasoning", ""),
+                    security_classification=finish_result.get(
+                        "security_classification", "neutral"),
+                    classification_reasoning=finish_result.get(
+                        "classification_reasoning", ""),
                     confidence=finish_result.get("confidence", 0.5),
                     iterations=iterations,
                     total_tokens=total_input_tokens + total_output_tokens,
@@ -279,7 +287,8 @@ class ContextAgent:
                 )
 
             # Add assistant message and tool results to conversation
-            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append(
+                {"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
         # Max iterations reached
@@ -378,7 +387,8 @@ def enhance_unit_with_agent(
         if additional_code:
             FILE_BOUNDARY = "\n\n// ========== File Boundary ==========\n\n"
             current_code = unit["code"]["primary_code"]
-            assembled = current_code + FILE_BOUNDARY + FILE_BOUNDARY.join(additional_code)
+            assembled = current_code + FILE_BOUNDARY + \
+                FILE_BOUNDARY.join(additional_code)
             unit["code"]["primary_code"] = assembled
 
             # Update metadata

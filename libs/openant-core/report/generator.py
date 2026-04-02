@@ -9,19 +9,24 @@ import anthropic
 from pathlib import Path
 from dotenv import load_dotenv
 
+from utilities.snowflake_client import create_cortex_client, map_model_name
+
 from .schema import validate_pipeline_output, ValidationError
 
 load_dotenv()
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
-MODEL = "claude-opus-4-6"
+MODEL = "claude-opus-4-6"  # mapped to Snowflake name at call time
 
 
 def _check_api_key():
-    """Check that ANTHROPIC_API_KEY is set."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Error: ANTHROPIC_API_KEY environment variable not set.", file=sys.stderr)
-        print("Set it with: export ANTHROPIC_API_KEY=sk-ant-...", file=sys.stderr)
+    """Check that Snowflake credentials are set."""
+    if not os.environ.get("SNOWFLAKE_PAT"):
+        print("Error: SNOWFLAKE_PAT environment variable not set.", file=sys.stderr)
+        print("Generate a PAT in Snowsight: Settings → Authentication → Programmatic Access Tokens.", file=sys.stderr)
+        sys.exit(1)
+    if not os.environ.get("SNOWFLAKE_ACCOUNT"):
+        print("Error: SNOWFLAKE_ACCOUNT environment variable not set.", file=sys.stderr)
         sys.exit(1)
 
 
@@ -56,14 +61,15 @@ def _compact_for_summary(pipeline_data: dict) -> dict:
 def generate_summary_report(pipeline_data: dict) -> str:
     """Generate a summary report from pipeline data."""
     _check_api_key()
-    client = anthropic.Anthropic()
+    client = create_cortex_client()
 
     summary_data = _compact_for_summary(pipeline_data)
     system_prompt = load_prompt("system")
-    user_prompt = load_prompt("summary").replace("{pipeline_data}", json.dumps(summary_data, indent=2))
+    user_prompt = load_prompt("summary").replace(
+        "{pipeline_data}", json.dumps(summary_data, indent=2))
 
     response = client.messages.create(
-        model=MODEL,
+        model=map_model_name(MODEL),
         max_tokens=4096,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}]
@@ -75,7 +81,7 @@ def generate_summary_report(pipeline_data: dict) -> str:
 def generate_disclosure(vulnerability_data: dict, product_name: str) -> str:
     """Generate a disclosure document for a single vulnerability."""
     _check_api_key()
-    client = anthropic.Anthropic()
+    client = create_cortex_client()
 
     system_prompt = load_prompt("system")
 
@@ -86,7 +92,7 @@ def generate_disclosure(vulnerability_data: dict, product_name: str) -> str:
     )
 
     response = client.messages.create(
-        model=MODEL,
+        model=map_model_name(MODEL),
         max_tokens=4096,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}]
