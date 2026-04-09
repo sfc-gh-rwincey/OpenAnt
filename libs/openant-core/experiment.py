@@ -37,6 +37,10 @@ from pathlib import Path
 from utilities.llm_client import AnthropicClient, get_global_tracker
 from prompts.prompt_selector import get_analysis_prompt
 from prompts.vulnerability_analysis import get_system_prompt as get_stage1_system_prompt
+from prompts.cicd_analysis import (
+    get_cicd_system_prompt,
+    get_cicd_analysis_prompt,
+)
 from utilities.context_corrector import ContextCorrector
 from utilities.json_corrector import JSONCorrector
 from utilities.ground_truth_challenger import GroundTruthChallenger, print_challenge_report
@@ -268,7 +272,8 @@ def _normalize_result(result: dict) -> dict:
             "inconclusive": "INCONCLUSIVE",
             "insufficient_context": "INSUFFICIENT_CONTEXT",
         }
-        result["verdict"] = finding_to_verdict.get(finding.lower(), finding.upper())
+        result["verdict"] = finding_to_verdict.get(
+            finding.lower(), finding.upper())
 
     # Ensure verdict is uppercase
     if "verdict" in result and isinstance(result["verdict"], str):
@@ -382,26 +387,42 @@ def analyze_unit(
             files_included=files_included
         )
         if len(enhanced_files) > len(files_included):
-            additional_files_added = [f for f in enhanced_files if f not in files_included]
+            additional_files_added = [
+                f for f in enhanced_files if f not in files_included]
             code = enhanced_code
             files_included = enhanced_files
             context_enhanced = True
-            print(f"      Added {len(additional_files_added)} files via LLM review")
+            print(
+                f"      Added {len(additional_files_added)} files via LLM review")
 
     # Generate prompt - single unified prompt for all cases
-    prompt = get_analysis_prompt(
-        code=code,
-        language=language,
-        route=route_key,
-        files_included=files_included,
-        security_classification=security_classification,
-        classification_reasoning=classification_reasoning,
-        app_context=app_context
-    )
+    # CI/CD workflows get a specialized prompt
+    unit_type = unit.get("unit_type", "")
+    if unit_type == "cicd_workflow":
+        security_model = unit.get("security_model", {})
+        metadata = unit.get("metadata", {})
+        prompt = get_cicd_analysis_prompt(
+            code=code,
+            platform=metadata.get("platform", "unknown"),
+            workflow_name=metadata.get("workflow_name", route_key),
+            security_model=security_model,
+            file_path=files_included[0] if files_included else "unknown",
+        )
+        system_prompt = get_cicd_system_prompt()
+    else:
+        prompt = get_analysis_prompt(
+            code=code,
+            language=language,
+            route=route_key,
+            files_included=files_included,
+            security_classification=security_classification,
+            classification_reasoning=classification_reasoning,
+            app_context=app_context
+        )
+        system_prompt = get_stage1_system_prompt(app_context=app_context)
 
-    # Call Claude with system prompt for threat model awareness
+    # Call Claude
     start_time = datetime.now()
-    system_prompt = get_stage1_system_prompt(app_context=app_context)
     response = client.analyze_sync(prompt, system=system_prompt)
     elapsed = (datetime.now() - start_time).total_seconds()
 
@@ -433,6 +454,15 @@ def analyze_unit(
     if security_classification:
         result["security_classification"] = security_classification
         result["classification_reasoning"] = classification_reasoning
+
+    # Pass CI/CD metadata through for Stage 2 verification
+    if unit_type == "cicd_workflow":
+        result["unit_type"] = "cicd_workflow"
+        result["unit_metadata"] = {
+            "platform": unit.get("metadata", {}).get("platform", "unknown"),
+            "security_model": unit.get("security_model", {}),
+            "vulnerabilities": result.get("vulnerabilities", []),
+        }
 
     return result
 
@@ -507,7 +537,8 @@ def run_experiment(
     if app_context:
         print(f"Application context loaded: {app_context.application_type}")
         print(f"  Purpose: {app_context.purpose[:80]}...")
-        print(f"  Requires remote trigger: {app_context.requires_remote_trigger}")
+        print(
+            f"  Requires remote trigger: {app_context.requires_remote_trigger}")
     else:
         print("No application context available (run: python -m context.generate_context /path/to/repo)")
 
@@ -549,7 +580,8 @@ def run_experiment(
         print(f"[{i+1}/{len(units)}] Analyzing {unit_id}{classification_tag}...")
 
         try:
-            result = analyze_unit(client, unit, use_multifile=enhanced, json_corrector=json_corrector, context_reviewer=context_reviewer, app_context=app_context)
+            result = analyze_unit(client, unit, use_multifile=enhanced, json_corrector=json_corrector,
+                                  context_reviewer=context_reviewer, app_context=app_context)
 
             # Track code for this route (for challenger)
             code_field = unit.get("code", {})
@@ -577,8 +609,10 @@ def run_experiment(
 
                 # Get original code and files for correction
                 code_field = unit.get("code", {})
-                original_code = code_field.get("primary_code", "") if isinstance(code_field, dict) else code_field
-                files_included = code_field.get("primary_origin", {}).get("files_included", []) if isinstance(code_field, dict) else []
+                original_code = code_field.get("primary_code", "") if isinstance(
+                    code_field, dict) else code_field
+                files_included = code_field.get("primary_origin", {}).get(
+                    "files_included", []) if isinstance(code_field, dict) else []
 
                 # Get route info for prompt generation
                 route = unit.get("route") or {}
@@ -587,7 +621,8 @@ def run_experiment(
                     handler = route.get("handler", "main")
                 else:
                     route_key = unit.get("id", "unknown")
-                    handler = route_key.split(":")[-1] if ":" in route_key else route_key
+                    handler = route_key.split(
+                        ":")[-1] if ":" in route_key else route_key
 
                 # Language defaults to "code" for generic code block formatting
                 language = "code"
@@ -612,11 +647,14 @@ def run_experiment(
                 # Check if correction was successful
                 if corrected_result.get("verdict") != "INSUFFICIENT_CONTEXT":
                     metrics["corrections_successful"] += 1
-                    print(f"      Correction successful! New verdict: {corrected_result.get('verdict')}")
+                    print(
+                        f"      Correction successful! New verdict: {corrected_result.get('verdict')}")
                     if corrected_result.get("files_added"):
-                        print(f"      Added files: {', '.join(corrected_result['files_added'])}")
+                        print(
+                            f"      Added files: {', '.join(corrected_result['files_added'])}")
                 else:
-                    correction_status = corrected_result.get("correction_status", "unknown")
+                    correction_status = corrected_result.get(
+                        "correction_status", "unknown")
                     print(f"      Correction failed: {correction_status}")
 
                 # Preserve route_key and other metadata from original result
@@ -628,11 +666,13 @@ def run_experiment(
             results.append(result)
 
             # Get ground truth
-            expected = get_ground_truth_verdict(ground_truth, result["route_key"])
+            expected = get_ground_truth_verdict(
+                ground_truth, result["route_key"])
             actual = result.get("verdict", "ERROR")
 
             result["expected"] = expected
-            result["correct"] = (expected == actual) if expected != "UNKNOWN" else None
+            result["correct"] = (
+                expected == actual) if expected != "UNKNOWN" else None
 
             # Update metrics
             if actual == "INSUFFICIENT_CONTEXT":
@@ -654,7 +694,8 @@ def run_experiment(
                 metrics["false_negatives"] += 1
 
             # Print result
-            status = "?" if expected == "UNKNOWN" else ("✓" if result["correct"] else "✗")
+            status = "?" if expected == "UNKNOWN" else (
+                "✓" if result["correct"] else "✗")
             print(f"    {status} Verdict: {actual} (expected: {expected})")
             print(f"      Confidence: {result.get('confidence', 'N/A')}")
             print(f"      Time: {result.get('elapsed_seconds', 0):.1f}s")
@@ -662,7 +703,8 @@ def run_experiment(
 
             if result.get("vulnerabilities"):
                 for vuln in result["vulnerabilities"][:2]:  # Show first 2
-                    print(f"      - {vuln.get('type')}: {vuln.get('sink', '')[:50]}")
+                    print(
+                        f"      - {vuln.get('type')}: {vuln.get('sink', '')[:50]}")
 
         except Exception as e:
             print(f"    ✗ Error: {str(e)}")
@@ -685,7 +727,8 @@ def run_experiment(
         analyzer_output_path = ANALYZER_OUTPUTS.get(dataset_name)
         if not analyzer_output_path or not os.path.exists(analyzer_output_path):
             print(f"WARNING: No analyzer_output.json found for {dataset_name}")
-            print("Stage 2 verification requires analyzer_output.json from parser pipeline")
+            print(
+                "Stage 2 verification requires analyzer_output.json from parser pipeline")
             print("Skipping verification...")
         else:
             print(f"Loading repository index from: {analyzer_output_path}")
@@ -717,7 +760,8 @@ def run_experiment(
                 # Include everything except hard errors
                 if r.get("verdict") != "ERROR" or finding:
                     valid_results.append(r)
-            print(f"Verifying {len(valid_results)} results with consistency check...")
+            print(
+                f"Verifying {len(valid_results)} results with consistency check...")
             print()
 
             # Use batch verification with consistency cross-check
@@ -751,10 +795,12 @@ def run_experiment(
                         metrics["verifications_disagreed"] += 1
                         result["finding"] = verification.correct_finding
                         result["verification_note"] = f"Changed from {stage1_finding} to {verification.correct_finding}"
-                        print(f"    ✗ DISAGREED: {stage1_finding} → {verification.correct_finding}")
+                        print(
+                            f"    ✗ DISAGREED: {stage1_finding} → {verification.correct_finding}")
 
                     if verify_verbose:
-                        print(f"    Explanation: {verification.explanation[:100]}...")
+                        print(
+                            f"    Explanation: {verification.explanation[:100]}...")
                         print(f"    Iterations: {verification.iterations}")
                         # Show exploit path if available
                         if verification.exploit_path:
@@ -762,11 +808,14 @@ def run_experiment(
                             print(f"    Exploit path:")
                             print(f"      Entry point: {ep.entry_point}")
                             print(f"      Sink reached: {ep.sink_reached}")
-                            print(f"      Attacker control: {ep.attacker_control_at_sink}")
+                            print(
+                                f"      Attacker control: {ep.attacker_control_at_sink}")
                             if ep.path_broken_at:
-                                print(f"      Path broken at: {ep.path_broken_at}")
+                                print(
+                                    f"      Path broken at: {ep.path_broken_at}")
                         if verification.security_weakness:
-                            print(f"    Security weakness: {verification.security_weakness}")
+                            print(
+                                f"    Security weakness: {verification.security_weakness}")
 
                 except Exception as e:
                     print(f"    ✗ Verification error: {str(e)}")
@@ -775,7 +824,8 @@ def run_experiment(
 
             # Run consistency cross-check on all verified results
             print("Running consistency cross-check...")
-            valid_results = verifier._check_consistency(valid_results, code_by_route)
+            valid_results = verifier._check_consistency(
+                valid_results, code_by_route)
 
             # Count consistency updates
             for result in valid_results:
@@ -784,7 +834,8 @@ def run_experiment(
                     update = result["consistency_update"]
                     print(f"    Consistency update: {result.get('route_key')}")
                     print(f"      {update.get('from')} → {update.get('to')}")
-                    print(f"      Reason: {update.get('reason', 'Similar code pattern')}")
+                    print(
+                        f"      Reason: {update.get('reason', 'Similar code pattern')}")
 
             # Recalculate metrics after verification
             print("\nRecalculating metrics after verification...")
@@ -809,7 +860,8 @@ def run_experiment(
                 elif expected == "VULNERABLE" and actual == "SAFE":
                     metrics["false_negatives"] += 1
 
-            print(f"Post-verification: TP={metrics['true_positives']}, TN={metrics['true_negatives']}, FP={metrics['false_positives']}, FN={metrics['false_negatives']}")
+            print(
+                f"Post-verification: TP={metrics['true_positives']}, TN={metrics['true_negatives']}, FP={metrics['false_positives']}, FN={metrics['false_negatives']}")
 
     # Challenge ground truth if enabled and there are FP/FN cases
     challenges = None
@@ -843,7 +895,8 @@ def run_experiment(
 
         # Run the challenger
         challenger = GroundTruthChallenger(client)
-        challenges = challenger.challenge_results(results, gt_for_challenger, code_by_route)
+        challenges = challenger.challenge_results(
+            results, gt_for_challenger, code_by_route)
 
         # Print challenge report
         print_challenge_report(challenges)
@@ -921,8 +974,10 @@ def print_summary(experiment: dict):
     if metrics.get('json_corrections_attempted', 0) > 0:
         print()
         print("JSON Corrections:")
-        print(f"  Attempted:           {metrics['json_corrections_attempted']}")
-        print(f"  Successful:          {metrics['json_corrections_successful']}")
+        print(
+            f"  Attempted:           {metrics['json_corrections_attempted']}")
+        print(
+            f"  Successful:          {metrics['json_corrections_successful']}")
     if metrics.get('verifications_total', 0) > 0:
         print()
         print("Stage 2 Verification:")
@@ -941,7 +996,8 @@ def print_summary(experiment: dict):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run vulnerability analysis experiment")
+    parser = argparse.ArgumentParser(
+        description="Run vulnerability analysis experiment")
     parser.add_argument(
         "--dataset", "-d",
         choices=list(DATASETS.keys()),

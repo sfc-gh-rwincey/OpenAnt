@@ -149,6 +149,35 @@ def scan_repository(
 
     print(f"  Parsed: {parse_result.units_count} units ({parse_result.language})",
           file=sys.stderr)
+
+    # ---------------------------------------------------------------
+    # Supplementary CI/CD scan: if the primary language is not "cicd",
+    # check for CI/CD configs and merge their units into the dataset.
+    # ---------------------------------------------------------------
+    if language != "cicd":
+        try:
+            from core.parser_adapter import has_cicd_configs
+            if has_cicd_configs(repo_path):
+                from parsers.cicd.parse_repository import parse_repository as _cicd_parse
+                cicd_output_dir = os.path.join(output_dir, "cicd")
+                os.makedirs(cicd_output_dir, exist_ok=True)
+                cicd_result = _cicd_parse(repo_path, cicd_output_dir)
+                if cicd_result["units_count"] > 0:
+                    # Merge CI/CD units into the main dataset
+                    with open(parse_result.dataset_path) as f:
+                        main_dataset = json.load(f)
+                    with open(cicd_result["dataset_path"]) as f:
+                        cicd_dataset = json.load(f)
+                    main_dataset["units"].extend(cicd_dataset["units"])
+                    main_dataset.setdefault("statistics", {})["cicd_units"] = cicd_result["units_count"]
+                    with open(parse_result.dataset_path, "w") as f:
+                        json.dump(main_dataset, f, indent=2)
+                    result.units_count += cicd_result["units_count"]
+                    print(f"  + CI/CD: {cicd_result['units_count']} workflow(s) added",
+                          file=sys.stderr)
+        except Exception as e:
+            print(f"  [Warning] CI/CD supplementary scan failed: {e}", file=sys.stderr)
+
     print(file=sys.stderr)
 
     # Active dataset path — may be updated by enhance step

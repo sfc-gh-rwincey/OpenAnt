@@ -288,7 +288,9 @@ class FindingVerifier:
         finding: str,
         attack_vector: str,
         reasoning: str,
-        files_included: list = None
+        files_included: list = None,
+        unit_type: str = None,
+        unit_metadata: dict = None,
     ) -> VerificationResult:
         """
         Validate a Stage 1 assessment with exploit path tracing.
@@ -299,21 +301,39 @@ class FindingVerifier:
             attack_vector: Stage 1's attack vector
             reasoning: Stage 1's reasoning
             files_included: Optional list of files in context
+            unit_type: Optional unit type (e.g., "cicd_workflow")
+            unit_metadata: Optional metadata dict for CI/CD units (security_model, etc.)
 
         Returns:
             VerificationResult with verdict, exploit path, and explanation
         """
-        user_prompt = get_verification_prompt(
-            code=code,
-            finding=finding,
-            attack_vector=attack_vector,
-            reasoning=reasoning,
-            files_included=files_included,
-            app_context=self.app_context
-        )
-
-        # Get system prompt with app context if available
-        system_prompt = get_verification_system_prompt(self.app_context)
+        # CI/CD workflows use specialized verification prompts
+        if unit_type == "cicd_workflow":
+            from prompts.cicd_analysis import (
+                get_cicd_verification_system_prompt,
+                get_cicd_verification_prompt,
+            )
+            metadata = unit_metadata or {}
+            user_prompt = get_cicd_verification_prompt(
+                code=code,
+                finding=finding,
+                attack_vector=attack_vector or "",
+                reasoning=reasoning,
+                vulnerabilities=metadata.get("vulnerabilities"),
+                platform=metadata.get("platform", "github_actions"),
+                security_model=metadata.get("security_model"),
+            )
+            system_prompt = get_cicd_verification_system_prompt()
+        else:
+            user_prompt = get_verification_prompt(
+                code=code,
+                finding=finding,
+                attack_vector=attack_vector,
+                reasoning=reasoning,
+                files_included=files_included,
+                app_context=self.app_context
+            )
+            system_prompt = get_verification_system_prompt(self.app_context)
 
         messages = [{"role": "user", "content": user_prompt}]
         iterations = 0
@@ -451,7 +471,9 @@ class FindingVerifier:
                     finding=stage1_finding,
                     attack_vector=result.get("attack_vector"),
                     reasoning=result.get("reasoning", ""),
-                    files_included=result.get("files_included", [])
+                    files_included=result.get("files_included", []),
+                    unit_type=result.get("unit_type"),
+                    unit_metadata=result.get("unit_metadata"),
                 )
 
                 result["verification"] = verification.to_dict()

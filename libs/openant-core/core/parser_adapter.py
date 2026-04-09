@@ -116,6 +116,8 @@ def parse_repository(
         return _parse_ruby(repo_path, output_dir, processing_level, skip_tests, name)
     elif language == "php":
         return _parse_php(repo_path, output_dir, processing_level, skip_tests, name)
+    elif language == "cicd":
+        return _parse_cicd(repo_path, output_dir, processing_level, skip_tests, name)
     else:
         raise ValueError(f"Unsupported language: {language}")
 
@@ -594,3 +596,55 @@ def _parse_php(repo_path: str, output_dir: str, processing_level: str, skip_test
         language="php",
         processing_level=processing_level,
     )
+
+
+# ---------------------------------------------------------------------------
+# CI/CD configuration parser
+# ---------------------------------------------------------------------------
+
+def _parse_cicd(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
+    """Invoke the CI/CD configuration parser.
+
+    Parses GitHub Actions, GitLab CI, Jenkins, and other CI/CD configs.
+    No call graph or reachability filtering — all workflows are analyzed.
+    """
+    print("[Parser] Running CI/CD parser...", file=sys.stderr)
+
+    parser_dir = str(_CORE_ROOT / "parsers" / "cicd")
+    if parser_dir not in sys.path:
+        sys.path.insert(0, parser_dir)
+
+    from parsers.cicd.parse_repository import parse_repository as _cicd_parse
+
+    result = _cicd_parse(
+        repo_path=repo_path,
+        output_dir=output_dir,
+        skip_tests=skip_tests,
+        name=name,
+    )
+
+    dataset_path = result["dataset_path"]
+    analyzer_output_path = result["analyzer_output_path"]
+    units_count = result["units_count"]
+
+    print(f"  CI/CD parser complete: {units_count} workflows", file=sys.stderr)
+
+    return ParseResult(
+        dataset_path=dataset_path,
+        analyzer_output_path=analyzer_output_path,
+        units_count=units_count,
+        language="cicd",
+        processing_level="all",  # No reachability filtering for CI/CD
+    )
+
+
+def has_cicd_configs(repo_path: str) -> bool:
+    """Check if a repository contains CI/CD configuration files.
+
+    Used by the scanner to decide whether to run a supplementary CI/CD
+    scan alongside the primary language scan.
+    """
+    from parsers.cicd.workflow_scanner import CICDScanner
+    scanner = CICDScanner(repo_path)
+    result = scanner.scan()
+    return result["statistics"]["total_files"] > 0

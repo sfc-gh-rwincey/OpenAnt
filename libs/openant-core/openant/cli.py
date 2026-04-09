@@ -462,9 +462,9 @@ def main():
     scan_p.add_argument("--output", "-o", help="Output directory (default: temp dir)")
     scan_p.add_argument(
         "--language", "-l",
-        choices=["auto", "python", "javascript", "go", "c", "ruby", "php"],
+        choices=["auto", "python", "javascript", "go", "c", "ruby", "php", "cicd"],
         default="auto",
-        help="Language (default: auto-detect)",
+        help="Language (default: auto-detect). Use 'cicd' for CI/CD-only scan.",
     )
     scan_p.add_argument(
         "--level",
@@ -497,9 +497,9 @@ def main():
     parse_p.add_argument("--output", "-o", help="Output directory (default: temp dir)")
     parse_p.add_argument(
         "--language", "-l",
-        choices=["auto", "python", "javascript", "go", "c", "ruby", "php"],
+        choices=["auto", "python", "javascript", "go", "c", "ruby", "php", "cicd"],
         default="auto",
-        help="Language (default: auto-detect)",
+        help="Language (default: auto-detect). Use 'cicd' for CI/CD configs only.",
     )
     parse_p.add_argument(
         "--level",
