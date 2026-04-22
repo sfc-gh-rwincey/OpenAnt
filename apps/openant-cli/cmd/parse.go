@@ -26,12 +26,16 @@ var (
 	parseOutput   string
 	parseLanguage string
 	parseLevel    string
+	parseSince    string
+	parseDiffBase string
 )
 
 func init() {
 	parseCmd.Flags().StringVarP(&parseOutput, "output", "o", "", "Output directory (default: project scan dir)")
 	parseCmd.Flags().StringVarP(&parseLanguage, "language", "l", "", "Language: python, javascript, go, c, ruby, php, cicd, auto")
 	parseCmd.Flags().StringVar(&parseLevel, "level", "all", "Processing level: all, reachable, codeql, exploitable")
+	parseCmd.Flags().StringVar(&parseSince, "since", "", "Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
+	parseCmd.Flags().StringVar(&parseDiffBase, "diff-base", "", "Only scan files changed compared to this branch/commit (e.g. 'main', 'abc1234')")
 }
 
 func runParse(cmd *cobra.Command, args []string) {
@@ -84,6 +88,12 @@ func runParse(cmd *cobra.Command, args []string) {
 	}
 	if parseLevel != "all" {
 		pyArgs = append(pyArgs, "--level", parseLevel)
+	}
+	if parseSince != "" {
+		pyArgs = append(pyArgs, "--since", parseSince)
+	}
+	if parseDiffBase != "" {
+		pyArgs = append(pyArgs, "--diff-base", parseDiffBase)
 	}
 
 	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, resolvedSnowflakePAT(), resolvedSnowflakeAccount(), resolvedSnowflakeUser())

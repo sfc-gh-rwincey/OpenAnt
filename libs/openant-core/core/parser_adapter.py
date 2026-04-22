@@ -73,6 +73,8 @@ def parse_repository(
     processing_level: str = "reachable",
     skip_tests: bool = True,
     name: str = None,
+    since: str = None,
+    diff_base: str = None,
 ) -> ParseResult:
     """Parse a repository into an OpenAnt dataset.
 
@@ -86,6 +88,8 @@ def parse_repository(
         processing_level: "all", "reachable", "codeql", or "exploitable".
         skip_tests: If True, exclude test files from parsing (default: True).
         name: Dataset name override (default: derived from repo path basename).
+        since: Only include files changed since this date (e.g. "1 week ago").
+        diff_base: Only include files changed vs this branch/commit (e.g. "main").
 
     Returns:
         ParseResult with paths to generated files and stats.
@@ -103,21 +107,62 @@ def parse_repository(
         language = detect_language(repo_path)
         print(f"  Auto-detected language: {language}", file=sys.stderr)
 
+    # Resolve git diff filter if requested
+    file_filter = None
+    if since or diff_base:
+        from core.git_diff import resolve_changed_files
+        file_filter = resolve_changed_files(
+            repo_path, since=since, diff_base=diff_base,
+        )
+        if not file_filter:
+            print("  [Git filter] No changed files found — nothing to scan.",
+                  file=sys.stderr)
+            # Write empty dataset and return early
+            dataset_path = os.path.join(output_dir, "dataset.json")
+            analyzer_output_path = os.path.join(output_dir, "analyzer_output.json")
+            empty = {"units": [], "metadata": {"name": name or Path(repo_path).name}}
+            with open(dataset_path, "w") as f:
+                json.dump(empty, f, indent=2)
+            with open(analyzer_output_path, "w") as f:
+                json.dump({"functions": {}}, f, indent=2)
+            return ParseResult(
+                dataset_path=dataset_path,
+                analyzer_output_path=analyzer_output_path,
+                units_count=0,
+                language=language,
+                processing_level=processing_level,
+            )
+
     # Dispatch to the right parser
     if language == "python":
-        return _parse_python(repo_path, output_dir, processing_level, skip_tests, name)
+        return _parse_python(repo_path, output_dir, processing_level, skip_tests, name, file_filter)
     elif language == "javascript":
-        return _parse_javascript(repo_path, output_dir, processing_level, skip_tests, name)
+        result = _parse_javascript(repo_path, output_dir, processing_level, skip_tests, name)
+        if file_filter:
+            result.units_count = _apply_file_filter(result.dataset_path, file_filter)
+        return result
     elif language == "go":
-        return _parse_go(repo_path, output_dir, processing_level, skip_tests, name)
+        result = _parse_go(repo_path, output_dir, processing_level, skip_tests, name)
+        if file_filter:
+            result.units_count = _apply_file_filter(result.dataset_path, file_filter)
+        return result
     elif language == "c":
-        return _parse_c(repo_path, output_dir, processing_level, skip_tests, name)
+        result = _parse_c(repo_path, output_dir, processing_level, skip_tests, name)
+        if file_filter:
+            result.units_count = _apply_file_filter(result.dataset_path, file_filter)
+        return result
     elif language == "ruby":
-        return _parse_ruby(repo_path, output_dir, processing_level, skip_tests, name)
+        result = _parse_ruby(repo_path, output_dir, processing_level, skip_tests, name)
+        if file_filter:
+            result.units_count = _apply_file_filter(result.dataset_path, file_filter)
+        return result
     elif language == "php":
-        return _parse_php(repo_path, output_dir, processing_level, skip_tests, name)
+        result = _parse_php(repo_path, output_dir, processing_level, skip_tests, name)
+        if file_filter:
+            result.units_count = _apply_file_filter(result.dataset_path, file_filter)
+        return result
     elif language == "cicd":
-        return _parse_cicd(repo_path, output_dir, processing_level, skip_tests, name)
+        return _parse_cicd(repo_path, output_dir, processing_level, skip_tests, name, file_filter)
     else:
         raise ValueError(f"Unsupported language: {language}")
 
@@ -251,10 +296,69 @@ def _apply_reachability_filter(
 
 
 # ---------------------------------------------------------------------------
+# Post-parse file filter (for subprocess-based parsers)
+# ---------------------------------------------------------------------------
+
+def _apply_file_filter(dataset_path: str, file_filter: set) -> int:
+    """Remove units from a dataset whose source file is not in *file_filter*.
+
+    This is applied *after* subprocess-based parsers (JS, Go, C, Ruby, PHP)
+    run, since modifying each parser's internal scanner is impractical.
+    The dataset is rewritten in place.
+
+    Args:
+        dataset_path: Path to the dataset.json file to filter.
+        file_filter: Set of repo-relative file paths (forward-slash separated)
+            that should be retained.
+
+    Returns:
+        The number of units remaining after filtering.
+    """
+    if not os.path.exists(dataset_path):
+        return 0
+
+    with open(dataset_path) as f:
+        dataset = json.load(f)
+
+    units = dataset.get("units", [])
+    original_count = len(units)
+    filtered = []
+    for u in units:
+        # Units have their source path in "file_path" or embedded in "id"
+        fp = u.get("file_path", "") or u.get("filePath", "")
+        if not fp:
+            # Try extracting from the unit id (format: "file.py:func_name")
+            uid = u.get("id", "")
+            if ":" in uid:
+                fp = uid.rsplit(":", 1)[0]
+        fp = fp.replace("\\", "/")
+        if fp in file_filter:
+            filtered.append(u)
+
+    dataset["units"] = filtered
+    dataset.setdefault("metadata", {})["git_file_filter"] = {
+        "original_units": original_count,
+        "filtered_units": len(filtered),
+        "files_in_filter": len(file_filter),
+    }
+
+    with open(dataset_path, "w") as f:
+        json.dump(dataset, f, indent=2)
+
+    print(
+        f"  [Git filter] Units: {original_count} -> {len(filtered)} "
+        f"(restricted to {len(file_filter)} changed files)",
+        file=sys.stderr,
+    )
+
+    return len(filtered)
+
+
+# ---------------------------------------------------------------------------
 # Python parser
 # ---------------------------------------------------------------------------
 
-def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
+def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None, file_filter: set = None) -> ParseResult:
     """Invoke the Python parser.
 
     The Python parser has a clean `parse_repository()` function that we can
@@ -276,6 +380,7 @@ def _parse_python(repo_path: str, output_dir: str, processing_level: str, skip_t
         "dataset_name": name or Path(repo_path).name,
         "output_dir": output_dir,  # For intermediate files
         "skip_tests": skip_tests,
+        "file_filter": file_filter,
     }
 
     dataset, analyzer_output = _py_parse(repo_path, options)
@@ -602,7 +707,7 @@ def _parse_php(repo_path: str, output_dir: str, processing_level: str, skip_test
 # CI/CD configuration parser
 # ---------------------------------------------------------------------------
 
-def _parse_cicd(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
+def _parse_cicd(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None, file_filter: set = None) -> ParseResult:
     """Invoke the CI/CD configuration parser.
 
     Parses GitHub Actions, GitLab CI, Jenkins, and other CI/CD configs.
@@ -621,6 +726,7 @@ def _parse_cicd(repo_path: str, output_dir: str, processing_level: str, skip_tes
         output_dir=output_dir,
         skip_tests=skip_tests,
         name=name,
+        file_filter=file_filter,
     )
 
     dataset_path = result["dataset_path"]

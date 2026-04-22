@@ -228,7 +228,7 @@ class CallGraphBuilder:
 
         return text if text.isidentifier() else None
 
-    def _resolve_call(self, call_name: str, caller_file: str) -> Optional[str]:
+    def _resolve_call(self, call_name: str, caller_file: str, _seen: Optional[set] = None) -> Optional[str]:
         """Resolve a function call name to a function ID."""
         if self._is_stdlib(call_name):
             return None
@@ -236,8 +236,13 @@ class CallGraphBuilder:
         # Check for macro aliases
         resolved_name = self.macro_aliases.get(call_name, call_name)
         if resolved_name != call_name:
+            if _seen is None:
+                _seen = {call_name}
+            if resolved_name in _seen:
+                return None  # cycle in macro aliases
+            _seen.add(resolved_name)
             # Try resolving the aliased name instead
-            result = self._resolve_call(resolved_name, caller_file)
+            result = self._resolve_call(resolved_name, caller_file, _seen)
             if result:
                 return result
 

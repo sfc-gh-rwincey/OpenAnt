@@ -38,6 +38,8 @@ var (
 	scanDynamicTest bool
 	scanLimit       int
 	scanModel       string
+	scanSince       string
+	scanDiffBase    string
 )
 
 func init() {
@@ -52,6 +54,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanDynamicTest, "dynamic-test", false, "Enable Docker-isolated dynamic testing (off by default)")
 	scanCmd.Flags().IntVar(&scanLimit, "limit", 0, "Max units to analyze (0 = no limit)")
 	scanCmd.Flags().StringVar(&scanModel, "model", "opus", "Model: opus or sonnet")
+	scanCmd.Flags().StringVar(&scanSince, "since", "", "Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
+	scanCmd.Flags().StringVar(&scanDiffBase, "diff-base", "", "Only scan files changed compared to this branch/commit (e.g. 'main', 'abc1234')")
 }
 
 func runScan(cmd *cobra.Command, args []string) {
@@ -114,6 +118,12 @@ func runScan(cmd *cobra.Command, args []string) {
 	}
 	if scanModel != "opus" {
 		pyArgs = append(pyArgs, "--model", scanModel)
+	}
+	if scanSince != "" {
+		pyArgs = append(pyArgs, "--since", scanSince)
+	}
+	if scanDiffBase != "" {
+		pyArgs = append(pyArgs, "--diff-base", scanDiffBase)
 	}
 
 	pat, account, user := requireSnowflakeCreds()

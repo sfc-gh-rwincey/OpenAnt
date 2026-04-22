@@ -123,15 +123,21 @@ def parse_repository(repo_path: str, options: dict = None) -> tuple:
     dataset_name = options.get('dataset_name', Path(repo_path).name)
     skip_tests = options.get('skip_tests', False)
     output_dir = options.get('output_dir')
+    file_filter = options.get('file_filter')
 
     print(f"=" * 60, file=sys.stderr)
     print(f"PYTHON REPOSITORY PARSER", file=sys.stderr)
     print(f"Repository: {repo_path}", file=sys.stderr)
+    if file_filter is not None:
+        print(f"File filter: {len(file_filter)} changed files", file=sys.stderr)
     print(f"=" * 60, file=sys.stderr)
 
     # Phase 1: Scan repository
     print(f"\n[Phase 1] Scanning repository for Python files...", file=sys.stderr)
-    scanner = RepositoryScanner(repo_path, {'skip_tests': skip_tests})
+    scanner = RepositoryScanner(repo_path, {
+        'skip_tests': skip_tests,
+        'file_filter': file_filter,
+    })
     scan_result = scanner.scan()
     print(f"  Found {scan_result['statistics']['total_files']} Python files", file=sys.stderr)
     print(f"  Total size: {scan_result['statistics']['total_size_bytes']:,} bytes", file=sys.stderr)

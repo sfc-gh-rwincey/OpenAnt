@@ -53,6 +53,8 @@ def scan_repository(
     enhance: bool = True,
     enhance_mode: str = "agentic",
     dynamic_test: bool = False,
+    since: str | None = None,
+    diff_base: str | None = None,
 ) -> ScanResult:
     """Scan a repository for vulnerabilities.
 
@@ -108,7 +110,7 @@ def scan_repository(
 
     _print_banner(repo_path, output_dir, language, processing_level,
                   verify, generate_context, enhance, enhance_mode,
-                  generate_report, dynamic_test)
+                  generate_report, dynamic_test, since, diff_base)
 
     # ---------------------------------------------------------------
     # Step 1: Parse
@@ -129,6 +131,8 @@ def scan_repository(
             language=language,
             processing_level=processing_level,
             skip_tests=skip_tests,
+            since=since,
+            diff_base=diff_base,
         )
 
         ctx.summary = {
@@ -616,6 +620,8 @@ def _print_banner(
     enhance_mode: str,
     generate_report: bool,
     dynamic_test: bool,
+    since: str | None = None,
+    diff_base: str | None = None,
 ) -> None:
     """Print the scan configuration banner."""
     print("=" * 60, file=sys.stderr)
@@ -625,6 +631,10 @@ def _print_banner(
     print(f"  Output:        {output_dir}", file=sys.stderr)
     print(f"  Language:      {language}", file=sys.stderr)
     print(f"  Level:         {processing_level}", file=sys.stderr)
+    if since:
+        print(f"  Changed since: {since}", file=sys.stderr)
+    if diff_base:
+        print(f"  Diff base:     {diff_base}", file=sys.stderr)
     print(f"  Enhance:       {enhance} ({enhance_mode})", file=sys.stderr)
     print(f"  Verify (S2):   {verify}", file=sys.stderr)
     print(f"  App context:   {generate_context}", file=sys.stderr)

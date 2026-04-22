@@ -51,6 +51,8 @@ def cmd_scan(args):
             enhance=not args.no_enhance,
             enhance_mode=args.enhance_mode,
             dynamic_test=args.dynamic_test,
+            since=getattr(args, "since", None),
+            diff_base=getattr(args, "diff_base", None),
         )
 
         _output_json(success(result.to_dict()))
@@ -87,6 +89,8 @@ def cmd_parse(args):
                 processing_level=args.level,
                 skip_tests=not args.no_skip_tests,
                 name=getattr(args, "name", None),
+                since=getattr(args, "since", None),
+                diff_base=getattr(args, "diff_base", None),
             )
 
             ctx.summary = {
@@ -487,6 +491,8 @@ def main():
     scan_p.add_argument("--no-skip-tests", action="store_true", help="Include test files in parsing (default: tests are skipped)")
     scan_p.add_argument("--limit", type=int, help="Max units to analyze")
     scan_p.add_argument("--model", choices=["opus", "sonnet"], default="opus", help="Model (default: opus)")
+    scan_p.add_argument("--since", help="Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
+    scan_p.add_argument("--diff-base", help="Only scan files changed vs this branch/commit (e.g. 'main', 'abc1234')")
     scan_p.set_defaults(func=cmd_scan)
 
     # ---------------------------------------------------------------
@@ -509,6 +515,8 @@ def main():
     )
     parse_p.add_argument("--no-skip-tests", action="store_true", help="Include test files in parsing (default: tests are skipped)")
     parse_p.add_argument("--name", help="Dataset name (default: derived from repo path)")
+    parse_p.add_argument("--since", help="Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
+    parse_p.add_argument("--diff-base", help="Only scan files changed vs this branch/commit (e.g. 'main', 'abc1234')")
     parse_p.set_defaults(func=cmd_parse)
 
     # ---------------------------------------------------------------

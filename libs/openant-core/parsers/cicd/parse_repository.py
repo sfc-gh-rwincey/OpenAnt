@@ -38,6 +38,7 @@ def parse_repository(
     output_dir: str,
     skip_tests: bool = True,
     name: str = None,
+    file_filter: set = None,
 ) -> dict:
     """Parse CI/CD configurations into an OpenAnt dataset.
 
@@ -46,6 +47,8 @@ def parse_repository(
         output_dir: Directory for output files.
         skip_tests: Unused (kept for interface compat).
         name: Dataset name override.
+        file_filter: Optional set of repo-relative paths; only matching
+            CI/CD files will be included.
 
     Returns:
         {"dataset_path": ..., "analyzer_output_path": ..., "units_count": ..., "language": "cicd"}
@@ -60,6 +63,10 @@ def parse_repository(
     scanner = CICDScanner(repo_path)
     scan_result = scanner.scan()
     files = scan_result["files"]
+
+    # Apply git diff file filter if provided
+    if file_filter and files:
+        files = [f for f in files if f["path"].replace("\\", "/") in file_filter]
 
     if not files:
         # No CI/CD files found — return empty dataset

@@ -101,6 +101,10 @@ class RepositoryScanner:
         self.skip_tests = options.get('skip_tests', False)
         self.test_patterns = {'test_', '_test.py', 'tests/', '/test/', 'conftest.py'}
 
+        # Optional file filter set (repo-relative paths, forward-slash separated)
+        # When set, only files whose relative path is in this set are included.
+        self.file_filter: Optional[Set[str]] = options.get('file_filter', None)
+
         # Statistics
         self.stats = {
             'total_files': 0,
@@ -169,6 +173,12 @@ class RepositoryScanner:
                 if self.skip_tests and self.is_test_file(entry_relative):
                     self.stats['test_files_skipped'] += 1
                     continue
+
+                # Apply git diff file filter if set
+                if self.file_filter is not None:
+                    normalized = entry_relative.replace("\\", "/")
+                    if normalized not in self.file_filter:
+                        continue
 
                 try:
                     file_size = entry.stat().st_size
