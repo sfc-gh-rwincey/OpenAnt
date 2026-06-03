@@ -6,6 +6,7 @@ which the Go CLI streams to the terminal in real-time.
 """
 
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -58,6 +59,9 @@ class ProgressReporter:
         self.tracker = tracker
         self.start_time = time.monotonic()
         self.completed = 0
+        # Serializes report() across worker threads so the counter increments
+        # and stderr lines stay coherent when this stage runs in parallel.
+        self._lock = threading.Lock()
 
         # Width for the counter so alignment stays consistent
         self._width = len(str(total))
@@ -100,38 +104,40 @@ class ProgressReporter:
             detail: Extra info (e.g. classification, verdict).
             unit_elapsed: How long this specific unit took, in seconds.
         """
-        self.completed += 1
-        elapsed = time.monotonic() - self.start_time
-        eta = self._estimate_remaining(elapsed)
-        cost = self._get_cost()
+        with self._lock:
+            self.completed += 1
+            completed = self.completed
+            elapsed = time.monotonic() - self.start_time
+            eta = self._estimate_remaining(elapsed)
+            cost = self._get_cost()
 
-        # Truncate label if too long
-        if len(unit_label) > 50:
-            unit_label = unit_label[:47] + "..."
+            # Truncate label if too long
+            if len(unit_label) > 50:
+                unit_label = unit_label[:47] + "..."
 
-        # Build the progress line
-        parts = [
-            f"[{self.step_name}]",
-            f"{self.completed:>{self._width}}/{self.total}",
-            unit_label,
-        ]
-        if detail:
-            parts.append(detail)
-        if unit_elapsed > 0:
-            parts.append(f"{unit_elapsed:.1f}s")
+            # Build the progress line
+            parts = [
+                f"[{self.step_name}]",
+                f"{completed:>{self._width}}/{self.total}",
+                unit_label,
+            ]
+            if detail:
+                parts.append(detail)
+            if unit_elapsed > 0:
+                parts.append(f"{unit_elapsed:.1f}s")
 
-        meta = f"(elapsed {_fmt_duration(elapsed)}, ETA {eta}, {_fmt_cost(cost)})"
-        parts.append(meta)
+            meta = f"(elapsed {_fmt_duration(elapsed)}, ETA {eta}, {_fmt_cost(cost)})"
+            parts.append(meta)
 
-        line = "  ".join(parts)
-        print(line, file=sys.stderr, flush=True)
+            line = "  ".join(parts)
+            print(line, file=sys.stderr, flush=True)
 
-        # Periodic summary
-        if (
-            self.completed % self._summary_interval == 0
-            and self.completed < self.total
-        ):
-            self._print_summary(elapsed, cost)
+            # Periodic summary
+            if (
+                completed % self._summary_interval == 0
+                and completed < self.total
+            ):
+                self._print_summary(elapsed, cost)
 
     def _print_summary(self, elapsed: float, cost: float) -> None:
         """Print a highlighted summary line."""

@@ -8,7 +8,7 @@
 
 # Project Context
 
-This is OpenAnt, a two-stage SAST tool using Claude for vulnerability analysis. Supports Python, JavaScript/TypeScript, and Go codebases with 4-level cost optimization.
+This is OpenAnt, a two-stage SAST tool using Claude for vulnerability analysis. Supports Python, JavaScript/TypeScript, Go, C/C++, Java, Ruby, and PHP codebases with 4-level cost optimization.
 
 **Key files to read after context reset:**
 - `DOCUMENTATION.md` - **Start here** - Index of all documentation
@@ -116,6 +116,10 @@ The `ANTHROPIC_API_KEY` is stored in `.env` in the project root. All modules loa
 - Python: `parsers/python/parse_repository.py`
 - JavaScript: `parsers/javascript/test_pipeline.py`
 - Go: `parsers/go/test_pipeline.py` (uses `go_parser` binary)
+- C/C++: `parsers/c/test_pipeline.py` (tree-sitter)
+- Java: `parsers/java/test_pipeline.py` (tree-sitter)
+- Ruby: `parsers/ruby/test_pipeline.py` (tree-sitter)
+- PHP: `parsers/php/test_pipeline.py` (tree-sitter)
 
 **Run parser with processing level:**
 ```bash

@@ -18,6 +18,7 @@ def run_tests(
     pipeline_output_path: str,
     output_dir: str,
     max_retries: int = 3,
+    workers: int = 1,
 ) -> DynamicTestStepResult:
     """Run dynamic exploit tests on confirmed vulnerabilities.
 
@@ -27,6 +28,10 @@ def run_tests(
         pipeline_output_path: Path to ``pipeline_output.json``.
         output_dir: Directory for test results.
         max_retries: Max retries per finding on error (default 3).
+        workers: Number of worker threads. <=1 → sequential. Each worker
+            performs an independent docker build/run, so parallelism here is
+            bounded by your Docker daemon, available CPU/RAM, and the size
+            of the images being built.
 
     Returns:
         DynamicTestStepResult with counts and paths.
@@ -79,13 +84,14 @@ def run_tests(
     # Import and run
     from utilities.dynamic_tester import run_dynamic_tests
 
-    print(f"[Dynamic Test] Running with max_retries={max_retries}...",
-          file=sys.stderr)
+    print(f"[Dynamic Test] Running with max_retries={max_retries}, "
+          f"workers={workers}...", file=sys.stderr)
 
     results = run_dynamic_tests(
         pipeline_output_path,
         output_dir,
         max_retries=max_retries,
+        workers=workers,
     )
 
     # Count outcomes

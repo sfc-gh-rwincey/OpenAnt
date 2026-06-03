@@ -22,6 +22,7 @@ def enhance_dataset(
     mode: str = "agentic",
     checkpoint_path: str | None = None,
     model: str = "sonnet",
+    workers: int = 1,
 ) -> EnhanceResult:
     """Enhance a parsed dataset with security context.
 
@@ -33,6 +34,10 @@ def enhance_dataset(
         mode: "agentic" (thorough, tool-use) or "single-shot" (fast, cheaper).
         checkpoint_path: Path to save/resume checkpoint (agentic mode only).
         model: "sonnet" (default, cost-effective).
+        workers: Number of worker threads for the per-unit enhancement loop.
+            <=1 → sequential. Each worker shares the repository index
+            (read-only) and the token tracker (thread-safe). Stats and
+            checkpoint writes are serialized internally.
 
     Returns:
         EnhanceResult with output path, stats, and usage.
@@ -40,7 +45,7 @@ def enhance_dataset(
     # Reset tracking for this step
     tracking.reset_tracking()
 
-    model_id = "claude-sonnet-4-20250514" if model == "sonnet" else "claude-opus-4-6"
+    model_id = "claude-sonnet-4-6" if model == "sonnet" else "claude-opus-4-6"
     print(f"[Enhance] Mode: {mode}", file=sys.stderr)
     print(f"[Enhance] Model: {model_id}", file=sys.stderr)
 
@@ -81,14 +86,17 @@ def enhance_dataset(
             repo_path=repo_path,
             checkpoint_path=checkpoint_path,
             progress_callback=_on_unit_done,
+            workers=workers,
         )
     elif mode == "single-shot":
         enhanced = enhancer.enhance_dataset(
             dataset,
             progress_callback=_on_unit_done,
+            workers=workers,
         )
     else:
-        raise ValueError(f"Unknown enhancement mode: {mode}. Use 'agentic' or 'single-shot'.")
+        raise ValueError(
+            f"Unknown enhancement mode: {mode}. Use 'agentic' or 'single-shot'.")
 
     progress.finish()
 

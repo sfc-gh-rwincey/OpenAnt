@@ -59,7 +59,7 @@ except ImportError:
     ApplicationContext = None
 
 
-VERIFIER_MODEL = map_model_name("claude-opus-4-6")
+VERIFIER_MODEL = map_model_name("claude-sonnet-4-6")
 MAX_ITERATIONS = 20
 MAX_TOKENS_PER_RESPONSE = 4096
 
@@ -441,6 +441,7 @@ class FindingVerifier:
         results: list,
         code_by_route: dict,
         progress_callback: Optional[Callable] = None,
+        workers: int = 1,
     ) -> list:
         """
         Verify a batch of results with consistency cross-check.
@@ -450,16 +451,33 @@ class FindingVerifier:
             code_by_route: Dict mapping route_key to code
             progress_callback: Optional callback(unit_id, detail, unit_elapsed)
                 called after each finding is verified.
+            workers: Number of worker threads for the per-finding verification
+                loop. <=1 → sequential. Each per-finding verification mutates
+                only its own ``result`` dict, so this is safe. The consistency
+                cross-check phase that follows runs sequentially.
 
         Returns:
             Updated results with verification and consistency check
         """
-        # Step 1: Individual verification
-        for i, result in enumerate(results):
+        try:
+            from core.parallel import (
+                parallel_map as _pmap,
+                resolve_workers as _resolve,
+                announce_parallelism as _announce,
+            )
+        except ImportError:
+            _pmap = None
+            _resolve = None
+            _announce = None
+
+        total = len(results)
+
+        def _process_finding(idx_result):
+            idx, result = idx_result
             route_key = result.get("route_key", "unknown")
             stage1_finding = result.get("finding", "inconclusive")
 
-            self._log("info", f"Verifying finding {i+1}/{len(results)}",
+            self._log("info", f"Verifying finding {idx+1}/{total}",
                       unit_id=route_key, classification=stage1_finding)
 
             unit_start = time.monotonic()
@@ -493,14 +511,29 @@ class FindingVerifier:
 
             except Exception as e:
                 detail = "error"
-                self._log("error", f"Verification failed",
+                self._log("error", "Verification failed",
                           unit_id=route_key, error=str(e))
 
             unit_elapsed = time.monotonic() - unit_start
             if progress_callback:
                 progress_callback(route_key, detail, unit_elapsed)
 
-        # Step 2: Consistency cross-check
+        if _pmap is not None and _resolve is not None:
+            effective_workers = _resolve(workers, total)
+            if _announce is not None:
+                _announce("Verify", effective_workers, total)
+            _pmap(
+                _process_finding,
+                list(enumerate(results)),
+                workers=effective_workers,
+                on_error="skip",
+                thread_name_prefix="openant-verify",
+            )
+        else:
+            for idx_result in enumerate(results):
+                _process_finding(idx_result)
+
+        # Step 2: Consistency cross-check (must remain sequential)
         results = self._check_consistency(results, code_by_route)
 
         return results

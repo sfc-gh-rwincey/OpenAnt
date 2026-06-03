@@ -27,10 +27,13 @@ def detect_language(repo_path: str) -> str:
     Counts source files by extension and returns the dominant language.
 
     Returns:
-        "python", "javascript", or "go"
+        "python", "javascript", "go", "c", "java", "ruby", or "php"
     """
     repo = Path(repo_path)
-    counts = {"python": 0, "javascript": 0, "go": 0, "c": 0, "ruby": 0, "php": 0}
+    counts = {
+        "python": 0, "javascript": 0, "go": 0, "c": 0,
+        "java": 0, "ruby": 0, "php": 0,
+    }
 
     for f in repo.rglob("*"):
         if not f.is_file():
@@ -40,6 +43,7 @@ def detect_language(repo_path: str) -> str:
         if any(p in parts for p in (
             "node_modules", "__pycache__", "venv", ".venv",
             "dist", "build", ".git", "vendor",
+            "target", ".gradle", ".mvn",  # Java/Maven/Gradle build dirs
         )):
             continue
 
@@ -52,6 +56,8 @@ def detect_language(repo_path: str) -> str:
             counts["go"] += 1
         elif suffix in (".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".hh"):
             counts["c"] += 1
+        elif suffix == ".java":
+            counts["java"] += 1
         elif suffix in (".rb", ".rake"):
             counts["ruby"] += 1
         elif suffix == ".php":
@@ -60,7 +66,8 @@ def detect_language(repo_path: str) -> str:
     if not any(counts.values()):
         raise ValueError(
             f"No supported source files found in {repo_path}. "
-            "Supported languages: Python, JavaScript/TypeScript, Go, C/C++, Ruby, PHP."
+            "Supported languages: Python, JavaScript/TypeScript, Go, C/C++, "
+            "Java, Ruby, PHP."
         )
 
     return max(counts, key=counts.get)
@@ -84,7 +91,7 @@ def parse_repository(
     Args:
         repo_path: Absolute path to the repository to parse.
         output_dir: Directory where dataset.json and analyzer_output.json will be written.
-        language: "auto", "python", "javascript", or "go".
+        language: "auto", "python", "javascript", "go", "c", "java", "ruby", "php", or "cicd".
         processing_level: "all", "reachable", "codeql", or "exploitable".
         skip_tests: If True, exclude test files from parsing (default: True).
         name: Dataset name override (default: derived from repo path basename).
@@ -148,6 +155,11 @@ def parse_repository(
         return result
     elif language == "c":
         result = _parse_c(repo_path, output_dir, processing_level, skip_tests, name)
+        if file_filter:
+            result.units_count = _apply_file_filter(result.dataset_path, file_filter)
+        return result
+    elif language == "java":
+        result = _parse_java(repo_path, output_dir, processing_level, skip_tests, name)
         if file_filter:
             result.units_count = _apply_file_filter(result.dataset_path, file_filter)
         return result
@@ -579,6 +591,66 @@ def _parse_c(repo_path: str, output_dir: str, processing_level: str, skip_tests:
         analyzer_output_path=analyzer_output_path if os.path.exists(analyzer_output_path) else None,
         units_count=units_count,
         language="c",
+        processing_level=processing_level,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Java parser
+# ---------------------------------------------------------------------------
+
+def _parse_java(repo_path: str, output_dir: str, processing_level: str, skip_tests: bool = True, name: str = None) -> ParseResult:
+    """Invoke the Java parser.
+
+    The Java parser uses tree-sitter-java for function extraction and
+    call-graph building. Invoked via subprocess (same pattern as C/Ruby/PHP
+    parsers).
+
+    Requires: tree-sitter, tree-sitter-java
+    """
+    print("[Parser] Running Java parser...", file=sys.stderr)
+
+    parser_script = _CORE_ROOT / "parsers" / "java" / "test_pipeline.py"
+
+    cmd = [
+        sys.executable, str(parser_script),
+        repo_path,
+        "--output", output_dir,
+        "--processing-level", processing_level,
+    ]
+
+    if name:
+        cmd.extend(["--name", name])
+    if skip_tests:
+        cmd.append("--skip-tests")
+
+    result = subprocess.run(
+        cmd,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        cwd=str(_CORE_ROOT),
+        timeout=1800,  # 30 min — Java repos can be large (e.g. GS)
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Java parser failed with exit code {result.returncode}")
+
+    dataset_path = os.path.join(output_dir, "dataset.json")
+    analyzer_output_path = os.path.join(output_dir, "analyzer_output.json")
+
+    units_count = 0
+    if os.path.exists(dataset_path):
+        with open(dataset_path) as f:
+            data = json.load(f)
+        units_count = len(data.get("units", []))
+
+    print(f"  Java parser complete: {units_count} units", file=sys.stderr)
+
+    return ParseResult(
+        dataset_path=dataset_path,
+        analyzer_output_path=analyzer_output_path if os.path.exists(analyzer_output_path) else None,
+        units_count=units_count,
+        language="java",
         processing_level=processing_level,
     )
 

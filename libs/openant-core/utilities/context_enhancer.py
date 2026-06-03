@@ -16,12 +16,23 @@ import json
 import argparse
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
 
 from .llm_client import AnthropicClient, TokenTracker, get_global_tracker, reset_global_tracker
 from .agentic_enhancer import RepositoryIndex, enhance_unit_with_agent, load_index_from_file
+from .agentic_enhancer.agent import AGENT_MODEL
+
+try:
+    from core.parallel import parallel_map, resolve_workers, announce_parallelism
+except ImportError:
+    # Fallback for direct script invocation outside the package context.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    parallel_map = None
+    resolve_workers = None
+    announce_parallelism = None
 
 
 # Null logger that discards all messages (used when no logger provided)
@@ -29,8 +40,11 @@ _null_logger = logging.getLogger("null")
 _null_logger.addHandler(logging.NullHandler())
 
 
-# Use Opus for context enhancement (better capability)
-CONTEXT_ENHANCEMENT_MODEL = "claude-opus-4-20250514"
+# Default model for context enhancement (single-shot mode).
+# Sonnet is the default — Opus is available via configuration if needed,
+# but most enhancement tasks are well within Sonnet's capability and the
+# 5x cost difference matters at scale.
+CONTEXT_ENHANCEMENT_MODEL = "claude-sonnet-4-6"
 
 
 def get_context_enhancement_prompt(
@@ -56,8 +70,10 @@ def get_context_enhancement_prompt(
         static_callers: Callers identified by static analysis
         context_functions: Other functions in the same file
     """
-    deps_list = "\n".join(f"- {d}" for d in static_deps) if static_deps else "- None identified"
-    callers_list = "\n".join(f"- {c}" for c in static_callers) if static_callers else "- None identified"
+    deps_list = "\n".join(
+        f"- {d}" for d in static_deps) if static_deps else "- None identified"
+    callers_list = "\n".join(
+        f"- {c}" for c in static_callers) if static_callers else "- None identified"
 
     context_section = ""
     if context_functions:
@@ -151,7 +167,8 @@ class ContextEnhancer:
             logger: Optional logger for structured logging. If not provided, uses print().
         """
         self.tracker = tracker or get_global_tracker()
-        self.client = client or AnthropicClient(model=CONTEXT_ENHANCEMENT_MODEL, tracker=self.tracker)
+        self.client = client or AnthropicClient(
+            model=CONTEXT_ENHANCEMENT_MODEL, tracker=self.tracker)
         self.logger = logger or _null_logger
         self._use_logger = logger is not None
         self.stats = {
@@ -162,6 +179,9 @@ class ContextEnhancer:
             "data_flows_extracted": 0,
             "errors": 0
         }
+        # Guards self.stats mutations when enhance_unit is called from
+        # multiple worker threads (single-shot --workers > 1).
+        self._stats_lock = threading.Lock()
 
     def _log(self, level: str, msg: str, **extras):
         """Log a message, using logger if available, otherwise print to stderr."""
@@ -170,12 +190,17 @@ class ContextEnhancer:
             log_func(msg, extra=extras)
         else:
             # Fallback to stderr for CLI usage (stdout is reserved for JSON envelope)
-            suffix = " ".join(f"{k}={v}" for k, v in extras.items() if v is not None)
+            suffix = " ".join(f"{k}={v}" for k,
+                              v in extras.items() if v is not None)
             print(f"{msg} {suffix}" if suffix else msg, file=sys.stderr)
 
     def enhance_unit(self, unit: dict, all_units: dict) -> dict:
         """
         Enhance a single analysis unit with LLM-identified context.
+
+        Thread-safe: all mutations of ``self.stats`` are guarded by an
+        internal lock so this method is safe to call from worker threads
+        in single-shot mode.
 
         Args:
             unit: The analysis unit to enhance
@@ -184,13 +209,15 @@ class ContextEnhancer:
         Returns:
             Enhanced unit with data_flow field populated
         """
-        self.stats["units_processed"] += 1
+        with self._stats_lock:
+            self.stats["units_processed"] += 1
 
         function_id = unit.get("id", "unknown")
         code_section = unit.get("code", {})
 
         # Extract info for prompt
-        function_name = code_section.get("primary_origin", {}).get("function_name", "unknown")
+        function_name = code_section.get(
+            "primary_origin", {}).get("function_name", "unknown")
         function_code = code_section.get("primary_code", "")
         unit_type = unit.get("unit_type", "function")
         class_name = code_section.get("primary_origin", {}).get("class_name")
@@ -205,7 +232,8 @@ class ContextEnhancer:
         for other_id, other_unit in all_units.items():
             if other_id == function_id:
                 continue
-            other_file = other_unit.get("code", {}).get("primary_origin", {}).get("file_path", "")
+            other_file = other_unit.get("code", {}).get(
+                "primary_origin", {}).get("file_path", "")
             if other_file == file_path:
                 context_functions.append({
                     "id": other_id,
@@ -235,16 +263,17 @@ class ContextEnhancer:
             analysis = self._parse_json_response(response)
 
             if analysis:
-                self.stats["units_enhanced"] += 1
-
-                # Count new items
                 new_deps = len(analysis.get("missing_dependencies", []))
                 new_callers = len(analysis.get("additional_callers", []))
-                self.stats["dependencies_added"] += new_deps
-                self.stats["callers_added"] += new_callers
+                has_flows = bool(
+                    analysis.get("data_flow", {}).get("security_relevant_flows"))
 
-                if analysis.get("data_flow", {}).get("security_relevant_flows"):
-                    self.stats["data_flows_extracted"] += 1
+                with self._stats_lock:
+                    self.stats["units_enhanced"] += 1
+                    self.stats["dependencies_added"] += new_deps
+                    self.stats["callers_added"] += new_callers
+                    if has_flows:
+                        self.stats["data_flows_extracted"] += 1
 
                 # Add enhancement to unit
                 unit["llm_context"] = {
@@ -259,8 +288,10 @@ class ContextEnhancer:
                 unit["llm_context"] = self._get_default_context()
 
         except Exception as e:
-            self.stats["errors"] += 1
-            self._log("error", f"Error enhancing unit", unit_id=function_id, error=str(e))
+            with self._stats_lock:
+                self.stats["errors"] += 1
+            self._log("error", "Error enhancing unit",
+                      unit_id=function_id, error=str(e))
             unit["llm_context"] = self._get_default_context()
 
         return unit
@@ -270,6 +301,7 @@ class ContextEnhancer:
         dataset: dict,
         batch_size: int = 10,
         progress_callback: Optional[Callable] = None,
+        workers: int = 1,
     ) -> dict:
         """
         Enhance all units in a dataset (single-shot mode).
@@ -279,6 +311,7 @@ class ContextEnhancer:
             batch_size: Number of units to process before printing progress
             progress_callback: Optional callback(unit_id, classification, unit_elapsed)
                 called after each unit completes.
+            workers: Number of worker threads. <=1 → sequential.
 
         Returns:
             Enhanced dataset
@@ -286,24 +319,44 @@ class ContextEnhancer:
         units = dataset.get("units", [])
         total = len(units)
 
-        self._log("info", f"Enhancing {total} units with LLM context (single-shot mode)", units=total)
+        self._log(
+            "info", f"Enhancing {total} units with LLM context (single-shot mode)", units=total)
         self._log("info", f"Model: {CONTEXT_ENHANCEMENT_MODEL}")
 
         # Build lookup dict for context gathering
         units_by_id = {u.get("id"): u for u in units}
 
-        for i, unit in enumerate(units):
-            if (i + 1) % batch_size == 0 or i == 0:
-                self._log("info", f"Processing unit {i + 1}/{total}", unit_id=unit.get("id"))
+        effective_workers = (
+            resolve_workers(workers, total)
+            if resolve_workers is not None
+            else (1 if workers is None or workers <= 1 else min(workers, total))
+        )
+        if announce_parallelism is not None:
+            announce_parallelism("Enhance", effective_workers, total)
 
-            unit_start = time.monotonic()
+        def _process_unit(unit: dict) -> str:
             self.enhance_unit(unit, units_by_id)
-            unit_elapsed = time.monotonic() - unit_start
+            return str(unit.get("llm_context", {}).get("confidence", "unknown"))
 
+        def _on_done(unit, result, elapsed):
             if progress_callback:
-                ctx = unit.get("llm_context", {})
-                classification = ctx.get("confidence", "unknown")
-                progress_callback(unit.get("id", "?"), str(classification), unit_elapsed)
+                classification = result if isinstance(result, str) else "error"
+                progress_callback(unit.get("id", "?"), classification, elapsed)
+
+        if parallel_map is not None:
+            parallel_map(
+                _process_unit,
+                units,
+                workers=effective_workers,
+                on_done=_on_done,
+                on_error="skip",
+                thread_name_prefix="openant-enhance",
+            )
+        else:
+            for unit in units:
+                start = time.monotonic()
+                result = _process_unit(unit)
+                _on_done(unit, result, time.monotonic() - start)
 
         # Get token usage stats
         token_stats = self.tracker.get_totals()
@@ -341,6 +394,7 @@ class ContextEnhancer:
         verbose: bool = False,
         checkpoint_path: str = None,
         progress_callback: Optional[Callable] = None,
+        workers: int = 1,
     ) -> dict:
         """
         Enhance all units using agentic approach with tool use.
@@ -360,6 +414,11 @@ class ContextEnhancer:
             checkpoint_path: Path to save/load checkpoint file (enables resume)
             progress_callback: Optional callback(unit_id, classification, unit_elapsed)
                 called after each unit completes.
+            workers: Number of worker threads. <=1 → sequential. Each worker
+                runs an independent ``enhance_unit_with_agent`` call against
+                the shared repository index (which is read-only after build).
+                The token tracker, stats dict, checkpoint writer, and progress
+                callback are all serialized internally.
 
         Returns:
             Enhanced dataset with agent_context field
@@ -373,7 +432,8 @@ class ContextEnhancer:
         if checkpoint_path:
             checkpoint_file = Path(checkpoint_path)
             if checkpoint_file.exists():
-                self._log("info", f"Found checkpoint at {checkpoint_path}, resuming...")
+                self._log(
+                    "info", f"Found checkpoint at {checkpoint_path}, resuming...")
                 with open(checkpoint_file, 'r') as f:
                     checkpoint_data = json.load(f)
 
@@ -383,7 +443,8 @@ class ContextEnhancer:
                         processed_ids.add(cp_unit.get("id"))
 
                 # Restore units from checkpoint
-                cp_units_by_id = {u.get("id"): u for u in checkpoint_data.get("units", [])}
+                cp_units_by_id = {
+                    u.get("id"): u for u in checkpoint_data.get("units", [])}
                 for unit in units:
                     unit_id = unit.get("id")
                     if unit_id in cp_units_by_id and cp_units_by_id[unit_id].get("agent_context"):
@@ -391,24 +452,30 @@ class ContextEnhancer:
                         if "code" in cp_units_by_id[unit_id]:
                             unit["code"] = cp_units_by_id[unit_id]["code"]
 
-                self._log("info", f"Restored {len(processed_ids)} already-processed units", units=len(processed_ids))
+                self._log(
+                    "info", f"Restored {len(processed_ids)} already-processed units", units=len(processed_ids))
 
         remaining = total - len(processed_ids)
-        self._log("info", f"Enhancing {remaining} units with agentic analysis ({len(processed_ids)} already done)", units=remaining)
+        self._log(
+            "info", f"Enhancing {remaining} units with agentic analysis ({len(processed_ids)} already done)", units=remaining)
         self._log("info", "Mode: Iterative tool use (traces call paths)")
-        self._log("info", "Model: claude-sonnet-4-20250514")
+        # Report the actual model the agent will use, not a hard-coded string.
+        self._log("info", f"Model: {AGENT_MODEL}")
         if checkpoint_path:
             self._log("info", f"Checkpoint: {checkpoint_path}")
 
         # Load repository index
-        self._log("info", f"Loading repository index from {analyzer_output_path}")
+        self._log(
+            "info", f"Loading repository index from {analyzer_output_path}")
         index = load_index_from_file(analyzer_output_path, repo_path)
         stats = index.get_statistics()
-        self._log("info", f"Indexed {stats['total_functions']} functions from {stats['total_files']} files")
+        self._log(
+            "info", f"Indexed {stats['total_functions']} functions from {stats['total_files']} files")
 
         # Track stats
         agentic_stats = {
-            "units_processed": len(processed_ids),  # Start from checkpoint count
+            # Start from checkpoint count
+            "units_processed": len(processed_ids),
             "units_with_context": 0,
             "total_iterations": 0,
             "functions_added": 0,
@@ -424,65 +491,100 @@ class ContextEnhancer:
             if agent_ctx and unit.get("id") in processed_ids:
                 if agent_ctx.get("include_functions"):
                     agentic_stats["units_with_context"] += 1
-                    agentic_stats["functions_added"] += len(agent_ctx["include_functions"])
-                classification = agent_ctx.get("security_classification", "neutral")
+                    agentic_stats["functions_added"] += len(
+                        agent_ctx["include_functions"])
+                classification = agent_ctx.get(
+                    "security_classification", "neutral")
                 if classification == "security_control":
                     agentic_stats["security_controls_found"] += 1
                 elif classification == "vulnerable":
                     agentic_stats["vulnerable_found"] += 1
                 else:
                     agentic_stats["neutral_found"] += 1
-                agentic_stats["total_iterations"] += agent_ctx.get("agent_metadata", {}).get("iterations", 0)
+                agentic_stats["total_iterations"] += agent_ctx.get(
+                    "agent_metadata", {}).get("iterations", 0)
 
-        processed_this_run = 0
-        for i, unit in enumerate(units):
-            unit_id = unit.get("id")
+        # Build the work list (skip already-processed units from checkpoint)
+        pending_units = [u for u in units if u.get("id") not in processed_ids]
+        effective_workers = (
+            resolve_workers(workers, len(pending_units))
+            if resolve_workers is not None
+            else (1 if workers is None or workers <= 1 else min(workers, len(pending_units)))
+        )
+        if announce_parallelism is not None:
+            announce_parallelism("Enhance", effective_workers, len(pending_units))
 
-            # Skip already-processed units
-            if unit_id in processed_ids:
-                continue
+        # Locks: stats dict and checkpoint write must be serialized.
+        stats_lock = threading.Lock()
+        checkpoint_lock = threading.Lock()
 
-            processed_this_run += 1
-            if processed_this_run % batch_size == 1 or processed_this_run == 1:
-                self._log("info", f"Processing unit {agentic_stats['units_processed'] + 1}/{total}", unit_id=unit_id)
+        def _process_unit(unit: dict) -> str:
+            """Run the agent on one unit and return its classification.
 
-            unit_start = time.monotonic()
+            ``enhance_unit_with_agent`` mutates ``unit`` in place. The
+            ``index`` and ``self.tracker`` are thread-safe to share.
+            """
             try:
                 enhance_unit_with_agent(unit, index, self.tracker, verbose)
-                agentic_stats["units_processed"] += 1
-
-                agent_ctx = unit.get("agent_context", {})
-                if agent_ctx.get("include_functions"):
-                    agentic_stats["units_with_context"] += 1
-                    agentic_stats["functions_added"] += len(agent_ctx["include_functions"])
-
-                classification = agent_ctx.get("security_classification", "neutral")
-                if classification == "security_control":
-                    agentic_stats["security_controls_found"] += 1
-                elif classification == "vulnerable":
-                    agentic_stats["vulnerable_found"] += 1
-                else:
-                    agentic_stats["neutral_found"] += 1
-
-                agentic_stats["total_iterations"] += agent_ctx.get("agent_metadata", {}).get("iterations", 0)
-
             except Exception as e:
-                classification = "error"
-                agentic_stats["errors"] += 1
-                self._log("error", f"Error processing unit", unit_id=unit_id, error=str(e))
+                self._log(
+                    "error", "Error processing unit",
+                    unit_id=unit.get("id"), error=str(e),
+                )
                 unit["agent_context"] = {
                     "error": str(e),
                     "security_classification": "neutral",
-                    "confidence": 0.0
+                    "confidence": 0.0,
                 }
+                with stats_lock:
+                    agentic_stats["errors"] += 1
+                return "error"
 
-            unit_elapsed = time.monotonic() - unit_start
+            agent_ctx = unit.get("agent_context", {})
+            classification = agent_ctx.get("security_classification", "neutral")
+
+            with stats_lock:
+                agentic_stats["units_processed"] += 1
+                if agent_ctx.get("include_functions"):
+                    agentic_stats["units_with_context"] += 1
+                    agentic_stats["functions_added"] += len(
+                        agent_ctx["include_functions"])
+                if classification == "security_control":
+                    agentic_stats["security_controls_found"] += 1
+                elif classification == "vulnerable":
+                    agentic_stats["vulnerable_found"] += 1
+                else:
+                    agentic_stats["neutral_found"] += 1
+                agentic_stats["total_iterations"] += agent_ctx.get(
+                    "agent_metadata", {}).get("iterations", 0)
+
+            return classification
+
+        def _on_done(unit, result, elapsed):
+            unit_id = unit.get("id") or "?"
+            classification = result if isinstance(result, str) else "error"
             if progress_callback:
-                progress_callback(unit_id or "?", classification, unit_elapsed)
-
-            # Save checkpoint after each unit
+                progress_callback(unit_id, classification, elapsed)
             if checkpoint_path:
-                self._save_checkpoint(dataset, checkpoint_path, agentic_stats)
+                with checkpoint_lock:
+                    self._save_checkpoint(
+                        dataset, checkpoint_path, agentic_stats)
+
+        if parallel_map is not None:
+            parallel_map(
+                _process_unit,
+                pending_units,
+                workers=effective_workers,
+                on_done=_on_done,
+                on_error="skip",
+                thread_name_prefix="openant-enhance",
+            )
+        else:
+            # Defensive fallback if core.parallel is unimportable.
+            for unit in pending_units:
+                start = time.monotonic()
+                result = _process_unit(unit)
+                _on_done(unit, result, time.monotonic() - start)
 
         # Get token usage stats
         token_stats = self.tracker.get_totals()
@@ -494,7 +596,8 @@ class ContextEnhancer:
         dataset["metadata"]["agentic_stats"] = agentic_stats
         dataset["metadata"]["token_usage"] = token_stats
 
-        avg_iterations = agentic_stats['total_iterations'] / max(1, agentic_stats['units_processed'])
+        avg_iterations = agentic_stats['total_iterations'] / \
+            max(1, agentic_stats['units_processed'])
         self._log("info", "Agentic enhancement complete",
                   units=agentic_stats['units_processed'],
                   functions_added=agentic_stats['functions_added'],
@@ -660,7 +763,8 @@ def main():
     if args.agentic:
         # Agentic mode - requires analyzer output
         if not args.analyzer_output:
-            logging.error("Error: --analyzer-output is required for agentic mode")
+            logging.error(
+                "Error: --analyzer-output is required for agentic mode")
             return 1
 
         analyzer_path = Path(args.analyzer_output)
@@ -678,7 +782,8 @@ def main():
         )
     else:
         # Single-shot mode (default)
-        enhanced = enhancer.enhance_dataset(dataset, batch_size=args.batch_size)
+        enhanced = enhancer.enhance_dataset(
+            dataset, batch_size=args.batch_size)
 
     # Write output
     output_path = Path(args.output) if args.output else input_path

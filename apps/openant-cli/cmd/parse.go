@@ -15,7 +15,7 @@ var parseCmd = &cobra.Command{
 	Long: `Parse extracts analyzable code units from a repository.
 
 The output is a JSON dataset that can be fed into the analyze command.
-Supports Python, JavaScript/TypeScript, Go, C/C++, Ruby, and PHP repositories.
+Supports Python, JavaScript/TypeScript, Go, C/C++, Java, Ruby, and PHP repositories.
 
 If no repository path is given, the active project is used (see: openant init).`,
 	Args: cobra.MaximumNArgs(1),
@@ -32,7 +32,7 @@ var (
 
 func init() {
 	parseCmd.Flags().StringVarP(&parseOutput, "output", "o", "", "Output directory (default: project scan dir)")
-	parseCmd.Flags().StringVarP(&parseLanguage, "language", "l", "", "Language: python, javascript, go, c, ruby, php, cicd, auto")
+	parseCmd.Flags().StringVarP(&parseLanguage, "language", "l", "", "Language: python, javascript, go, c, java, ruby, php, cicd, auto")
 	parseCmd.Flags().StringVar(&parseLevel, "level", "all", "Processing level: all, reachable, codeql, exploitable")
 	parseCmd.Flags().StringVar(&parseSince, "since", "", "Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
 	parseCmd.Flags().StringVar(&parseDiffBase, "diff-base", "", "Only scan files changed compared to this branch/commit (e.g. 'main', 'abc1234')")

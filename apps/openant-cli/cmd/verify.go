@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/knostic/open-ant-cli/internal/output"
@@ -29,6 +30,7 @@ var (
 	verifyAnalyzerOutput string
 	verifyAppContext     string
 	verifyRepoPath       string
+	verifyWorkers        int
 )
 
 func init() {
@@ -36,6 +38,7 @@ func init() {
 	verifyCmd.Flags().StringVar(&verifyAnalyzerOutput, "analyzer-output", "", "Path to analyzer_output.json")
 	verifyCmd.Flags().StringVar(&verifyAppContext, "app-context", "", "Path to application_context.json")
 	verifyCmd.Flags().StringVar(&verifyRepoPath, "repo-path", "", "Path to the repository")
+	verifyCmd.Flags().IntVar(&verifyWorkers, "workers", 1, "Worker threads for per-finding verification (default: 1 = sequential)")
 }
 
 func runVerify(cmd *cobra.Command, args []string) {
@@ -77,6 +80,9 @@ func runVerify(cmd *cobra.Command, args []string) {
 	}
 	if verifyRepoPath != "" {
 		pyArgs = append(pyArgs, "--repo-path", verifyRepoPath)
+	}
+	if verifyWorkers > 1 {
+		pyArgs = append(pyArgs, "--workers", fmt.Sprintf("%d", verifyWorkers))
 	}
 
 	pat, account, user := requireSnowflakeCreds()

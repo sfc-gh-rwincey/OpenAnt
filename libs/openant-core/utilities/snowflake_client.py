@@ -34,18 +34,38 @@ Usage:
 """
 
 import os
+import re
 import httpx
 import anthropic
 from dotenv import load_dotenv
 
 
-# Map old Anthropic model IDs → Snowflake Cortex model names.
-# Snowflake uses shorter names without date suffixes.
+# Matches an 8-digit date suffix at the end of a model ID, e.g. "-20250514".
+# Cortex rejects these; we use the regex to refuse pass-through and force the
+# caller to add a proper alias to MODEL_NAME_MAP.
+_DATED_MODEL_SUFFIX = re.compile(r"-\d{8}$")
+
+
+# Map model IDs → Snowflake Cortex model names. Snowflake uses shorter names
+# without date suffixes, so any dated Anthropic ID (e.g. "claude-opus-4-20250514")
+# must be translated. The set of canonical Cortex names lives at the bottom
+# of the map; the dated-ID aliases above resolve into them.
 MODEL_NAME_MAP: dict[str, str] = {
-    # Dated Anthropic IDs used throughout the codebase
+    # --- Dated Anthropic IDs → Cortex equivalents -------------------------
+    # Opus 4 series
     "claude-opus-4-20250514": "claude-opus-4-6",
+    "claude-opus-4-5-20250929": "claude-opus-4-5",
+    # Sonnet 4 series
     "claude-sonnet-4-20250514": "claude-sonnet-4-6",
-    # Already Snowflake-compatible names (passthrough)
+    "claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+    # Haiku 4 series
+    "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+    # 3.x series
+    "claude-3-7-sonnet-20250219": "claude-3-7-sonnet",
+    "claude-3-5-sonnet-20241022": "claude-3-5-sonnet",
+    "claude-3-5-sonnet-20240620": "claude-3-5-sonnet",
+
+    # --- Canonical Cortex names (passthrough) ------------------------------
     "claude-opus-4-6": "claude-opus-4-6",
     "claude-sonnet-4-6": "claude-sonnet-4-6",
     "claude-opus-4-5": "claude-opus-4-5",
@@ -74,13 +94,24 @@ def map_model_name(model: str) -> str:
     if mapped:
         return mapped
 
-    # If it looks like it could already be a valid Cortex name, pass through
+    # Dated Anthropic IDs we don't have an explicit alias for: refuse
+    # rather than passing through, because Cortex will reject them at
+    # request time with a less helpful error.
+    if _DATED_MODEL_SUFFIX.search(model):
+        raise ValueError(
+            f"Unknown dated model ID: {model}. "
+            f"Snowflake Cortex does not accept dated Anthropic IDs. "
+            f"Add an alias to MODEL_NAME_MAP or use one of: "
+            f"{', '.join(sorted(set(MODEL_NAME_MAP.values())))}"
+        )
+
+    # Otherwise assume it's already a Cortex-shaped name (no date suffix).
     if model.startswith("claude-"):
         return model
 
     raise ValueError(
         f"Unknown model: {model}. "
-        f"Supported models: {', '.join(sorted(MODEL_NAME_MAP.keys()))}"
+        f"Supported models: {', '.join(sorted(set(MODEL_NAME_MAP.values())))}"
     )
 
 

@@ -33,6 +33,7 @@ def run_verification(
     analyzer_output_path: str,
     app_context_path: str | None = None,
     repo_path: str | None = None,
+    workers: int = 1,
 ) -> VerifyResult:
     """Run Stage 2 attacker-simulation verification on Stage 1 results.
 
@@ -46,6 +47,8 @@ def run_verification(
             repository index / tool use).
         app_context_path: Optional path to ``application_context.json``.
         repo_path: Optional path to the repository root (passed to index).
+        workers: Number of worker threads for per-finding verification.
+            <=1 → sequential. Consistency cross-check stays serial.
 
     Returns:
         VerifyResult with paths, counts, and usage info.
@@ -134,6 +137,7 @@ def run_verification(
         verified_results = verifier.verify_batch(
             vulnerable_results, code_by_route,
             progress_callback=_on_finding_done,
+            workers=workers,
         )
     except Exception as e:
         print(f"[Verify] ERROR during batch verification: {e}", file=sys.stderr)

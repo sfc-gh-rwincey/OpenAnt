@@ -19,7 +19,7 @@ from utilities.snowflake_client import map_model_name
 
 
 # Use Opus model for consistency checks (better accuracy)
-CONSISTENCY_MODEL = map_model_name("claude-opus-4-20250514")
+CONSISTENCY_MODEL = map_model_name("claude-opus-4-6")
 MAX_TOKENS = 4096
 
 

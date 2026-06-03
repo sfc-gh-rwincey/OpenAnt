@@ -9,15 +9,15 @@
 
 ## Implementation Status
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| Phase 1: Full Coverage | **COMPLETE** | RepositoryScanner, TypeScriptAnalyzer, UnitGenerator |
-| Phase 2: Call Graph | **COMPLETE** | DependencyResolver integrated into UnitGenerator |
-| Phase 3: LLM Enhancement | **COMPLETE** | ContextEnhancer (Python) using Claude Sonnet |
-| Phase 4: OpenAnt Format | **COMPLETE** | Standard output format with assembled dependencies |
-| Phase 5: Agentic Enhancement | **COMPLETE** | Iterative tool use for security intent detection |
+| Phase                                | Status       | Description                                              |
+| ------------------------------------ | ------------ | -------------------------------------------------------- |
+| Phase 1: Full Coverage               | **COMPLETE** | RepositoryScanner, TypeScriptAnalyzer, UnitGenerator     |
+| Phase 2: Call Graph                  | **COMPLETE** | DependencyResolver integrated into UnitGenerator         |
+| Phase 3: LLM Enhancement             | **COMPLETE** | ContextEnhancer (Python) using Claude Sonnet             |
+| Phase 4: OpenAnt Format              | **COMPLETE** | Standard output format with assembled dependencies       |
+| Phase 5: Agentic Enhancement         | **COMPLETE** | Iterative tool use for security intent detection         |
 | Phase 6: Reachability Classification | **COMPLETE** | Entry point detection + user input reachability analysis |
-| Phase 7: Processing Levels + CodeQL | **COMPLETE** | 4-level cost optimization with CodeQL pre-filter |
+| Phase 7: Processing Levels + CodeQL  | **COMPLETE** | 4-level cost optimization with CodeQL pre-filter         |
 
 ---
 
@@ -134,13 +134,13 @@ The parser pipeline **must** adhere to these requirements:
 
 ### Required Fields for OpenAnt Compatibility
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `code.primary_code` | **YES** | All code assembled with `// ========== File Boundary ==========` separators |
-| `code.primary_origin.enhanced` | **YES** | `true` if dependencies included in primary_code, `false` otherwise |
-| `code.primary_origin.files_included` | **YES** | List of all files whose code appears in primary_code |
-| `code.primary_origin.original_length` | **YES** | Character count of primary function code only |
-| `code.primary_origin.enhanced_length` | **YES** | Character count of assembled code with all dependencies |
+| Field                                 | Required | Description                                                                 |
+| ------------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `code.primary_code`                   | **YES**  | All code assembled with `// ========== File Boundary ==========` separators |
+| `code.primary_origin.enhanced`        | **YES**  | `true` if dependencies included in primary_code, `false` otherwise          |
+| `code.primary_origin.files_included`  | **YES**  | List of all files whose code appears in primary_code                        |
+| `code.primary_origin.original_length` | **YES**  | Character count of primary function code only                               |
+| `code.primary_origin.enhanced_length` | **YES**  | Character count of assembled code with all dependencies                     |
 
 **Why these fields matter**:
 - `experiment.py` checks `primary_origin.enhanced` (line 191) to decide whether to use multifile analysis
@@ -275,7 +275,7 @@ This format matches DVNA/NodeGoat enhanced datasets and is recognized by OpenAnt
 **File**: `utilities/context_enhancer.py`
 
 **Implementation**:
-- Uses Claude Sonnet (`claude-sonnet-4-20250514`) for cost-effective enhancement
+- Uses Claude Sonnet (`claude-sonnet-4-6`) for cost-effective enhancement
 - Identifies missing dependencies that static analysis missed
 - Identifies additional callers based on naming patterns
 - Extracts data flow information (inputs, outputs, tainted variables, security flows)
@@ -290,13 +290,13 @@ python -m utilities.context_enhancer dataset.json --output enhanced.json
 
 ### 3.3 Model Strategy — DONE
 
-| Task | Model | Location |
-|------|-------|----------|
+| Task                              | Model  | Location                        |
+| --------------------------------- | ------ | ------------------------------- |
 | Context enhancement (single-shot) | Sonnet | `utilities/context_enhancer.py` |
-| Context enhancement (agentic) | Sonnet | `utilities/agentic_enhancer/` |
-| JSON repair | Sonnet | `utilities/json_corrector.py` |
-| Context review | Sonnet | `utilities/context_reviewer.py` |
-| Vulnerability detection | Opus | `utilities/llm_client.py` |
+| Context enhancement (agentic)     | Sonnet | `utilities/agentic_enhancer/`   |
+| JSON repair                       | Sonnet | `utilities/json_corrector.py`   |
+| Context review                    | Sonnet | `utilities/context_reviewer.py` |
+| Vulnerability detection           | Opus   | `utilities/llm_client.py`       |
 
 ### 3.4 Removed JavaScript LLM Code
 
@@ -364,31 +364,31 @@ Implemented iterative tool-use analysis that mimics how a security expert would 
 ### 5.3 Implementation
 
 **New Files**:
-| File | Purpose |
-|------|---------|
-| `utilities/agentic_enhancer/__init__.py` | Package exports |
-| `utilities/agentic_enhancer/repository_index.py` | Searchable function index |
-| `utilities/agentic_enhancer/tools.py` | Tool definitions for Anthropic API |
-| `utilities/agentic_enhancer/prompts.py` | System and user prompts |
-| `utilities/agentic_enhancer/agent.py` | Main agent loop with tool dispatch |
+| File                                             | Purpose                            |
+| ------------------------------------------------ | ---------------------------------- |
+| `utilities/agentic_enhancer/__init__.py`         | Package exports                    |
+| `utilities/agentic_enhancer/repository_index.py` | Searchable function index          |
+| `utilities/agentic_enhancer/tools.py`            | Tool definitions for Anthropic API |
+| `utilities/agentic_enhancer/prompts.py`          | System and user prompts            |
+| `utilities/agentic_enhancer/agent.py`            | Main agent loop with tool dispatch |
 
 **Agent Tools**:
-| Tool | Purpose |
-|------|---------|
-| `search_usages` | Find where a function is called |
+| Tool                 | Purpose                          |
+| -------------------- | -------------------------------- |
+| `search_usages`      | Find where a function is called  |
 | `search_definitions` | Find where a function is defined |
-| `read_function` | Get full function code by ID |
-| `list_functions` | List functions in a file |
-| `read_file_section` | Read specific lines from a file |
-| `finish` | Complete analysis with result |
+| `read_function`      | Get full function code by ID     |
+| `list_functions`     | List functions in a file         |
+| `read_file_section`  | Read specific lines from a file  |
+| `finish`             | Complete analysis with result    |
 
 **Security Classifications** (Updated in Phase 6):
-| Classification | Meaning |
-|----------------|---------|
-| `exploitable` | Vulnerable AND reachable from user input |
+| Classification        | Meaning                                      |
+| --------------------- | -------------------------------------------- |
+| `exploitable`         | Vulnerable AND reachable from user input     |
 | `vulnerable_internal` | Vulnerable but NOT reachable from user input |
-| `security_control` | Prevents or blocks vulnerabilities |
-| `neutral` | Neither vulnerable nor a security control |
+| `security_control`    | Prevents or blocks vulnerabilities           |
+| `neutral`             | Neither vulnerable nor a security control    |
 
 ### 5.4 Usage
 
@@ -411,13 +411,13 @@ python test_pipeline.py /path/to/repo \
 
 Tested on 13 units from 4 Flowise files with known vulnerabilities:
 
-| Metric | Single-Shot | Agentic |
-|--------|------------|---------|
-| True Positives | 1 | 3 |
-| False Positives | 7 | 0 |
-| True Negatives | 3 | 10 |
-| False Negatives | 2 | 0 |
-| **Accuracy** | **31%** | **100%** |
+| Metric          | Single-Shot | Agentic  |
+| --------------- | ----------- | -------- |
+| True Positives  | 1           | 3        |
+| False Positives | 7           | 0        |
+| True Negatives  | 3           | 10       |
+| False Negatives | 2           | 0        |
+| **Accuracy**    | **31%**     | **100%** |
 
 **Correctly classified as VULNERABLE (3)**:
 - `SecureFileStore.createUnsecure` — Disables security controls
@@ -438,10 +438,10 @@ Tested on 13 units from 4 Flowise files with known vulnerabilities:
 
 ### 5.6 Cost Analysis
 
-| Mode | Cost per Unit | Accuracy |
-|------|---------------|----------|
-| Single-shot | ~$0.02 | ~31% |
-| Agentic | ~$0.21 | 100% |
+| Mode        | Cost per Unit | Accuracy |
+| ----------- | ------------- | -------- |
+| Single-shot | ~$0.02        | ~31%     |
+| Agentic     | ~$0.21        | 100%     |
 
 Agentic mode is ~10x more expensive but eliminates false positives.
 
@@ -463,10 +463,10 @@ Added two new components to distinguish exploitable vulnerabilities from interna
 ### 6.3 Implementation
 
 **New Files**:
-| File | Purpose |
-|------|---------|
-| `utilities/agentic_enhancer/entry_point_detector.py` | Identifies entry points (route handlers, CLI, stdin, etc.) |
-| `utilities/agentic_enhancer/reachability_analyzer.py` | BFS reachability from entry points via reverse call graph |
+| File                                                  | Purpose                                                    |
+| ----------------------------------------------------- | ---------------------------------------------------------- |
+| `utilities/agentic_enhancer/entry_point_detector.py`  | Identifies entry points (route handlers, CLI, stdin, etc.) |
+| `utilities/agentic_enhancer/reachability_analyzer.py` | BFS reachability from entry points via reverse call graph  |
 
 **Entry Point Detection Patterns**:
 - Route handlers: `@app.route`, `@router.post`, `req.body`, `request.args`
@@ -476,12 +476,12 @@ Added two new components to distinguish exploitable vulnerabilities from interna
 - Streamlit: `st.text_input`, `st.file_uploader`
 
 **Updated Classification Enum**:
-| Classification | Meaning |
-|----------------|---------|
-| `exploitable` | Vulnerable + reachable from user input (highest priority) |
-| `vulnerable_internal` | Vulnerable but no user input path (lower priority) |
-| `security_control` | Defensive code |
-| `neutral` | No security relevance |
+| Classification        | Meaning                                                   |
+| --------------------- | --------------------------------------------------------- |
+| `exploitable`         | Vulnerable + reachable from user input (highest priority) |
+| `vulnerable_internal` | Vulnerable but no user input path (lower priority)        |
+| `security_control`    | Defensive code                                            |
+| `neutral`             | No security relevance                                     |
 
 ### 6.4 Output Format
 
@@ -552,12 +552,12 @@ Reachability filtering (Phase 6) achieved significant cost savings (70-94%), but
 
 Implemented cumulative filtering with four processing levels:
 
-| Level | Name | Filter | Cost Reduction |
-|-------|------|--------|----------------|
-| 1 | `all` | None | - |
-| 2 | `reachable` | Entry point reachability | ~94% |
-| 3 | `codeql` | Reachable + CodeQL-flagged | ~99% |
-| 4 | `exploitable` | Reachable + CodeQL + Agentic classification | ~99.9% |
+| Level | Name          | Filter                                      | Cost Reduction |
+| ----- | ------------- | ------------------------------------------- | -------------- |
+| 1     | `all`         | None                                        | -              |
+| 2     | `reachable`   | Entry point reachability                    | ~94%           |
+| 3     | `codeql`      | Reachable + CodeQL-flagged                  | ~99%           |
+| 4     | `exploitable` | Reachable + CodeQL + Agentic classification | ~99.9%         |
 
 ### 7.3 Implementation
 
@@ -569,12 +569,12 @@ python test_pipeline.py /path/to/repo \
 ```
 
 **New Pipeline Stages:**
-| Stage | Purpose |
-|-------|---------|
-| 3.5 | ReachabilityFilter - BFS from entry points |
-| 3.6 | CodeQL Analysis - Create database, run security queries |
-| 3.7 | CodeQL Filter - Map SARIF findings to function units |
-| 4.5 | ExploitableFilter - Keep only "exploitable" classified units |
+| Stage | Purpose                                                      |
+| ----- | ------------------------------------------------------------ |
+| 3.5   | ReachabilityFilter - BFS from entry points                   |
+| 3.6   | CodeQL Analysis - Create database, run security queries      |
+| 3.7   | CodeQL Filter - Map SARIF findings to function units         |
+| 4.5   | ExploitableFilter - Keep only "exploitable" classified units |
 
 **CodeQL Integration:**
 - Auto-detects language (JavaScript or Python) from scan results
@@ -584,24 +584,24 @@ python test_pipeline.py /path/to/repo \
 - Maps file:line findings to function units by line range overlap
 
 **New Methods in `test_pipeline.py`:**
-| Method | Purpose |
-|--------|---------|
-| `_detect_codeql_language()` | Detect JS/Python from file extensions |
-| `run_codeql_analysis()` | Create database, run queries, parse SARIF |
-| `apply_codeql_filter()` | Filter dataset to CodeQL-flagged units |
-| `apply_reachability_filter()` | Filter to reachable units |
-| `apply_exploitable_filter()` | Filter to exploitable units only |
+| Method                        | Purpose                                   |
+| ----------------------------- | ----------------------------------------- |
+| `_detect_codeql_language()`   | Detect JS/Python from file extensions     |
+| `run_codeql_analysis()`       | Create database, run queries, parse SARIF |
+| `apply_codeql_filter()`       | Filter dataset to CodeQL-flagged units    |
+| `apply_reachability_filter()` | Filter to reachable units                 |
+| `apply_exploitable_filter()`  | Filter to exploitable units only          |
 
 ### 7.4 Test Results — VERIFIED
 
 Tested on Flowise `packages/components` (1,417 units):
 
-| Level | Units | Reduction | Agentic Cost |
-|-------|-------|-----------|--------------|
-| All | 1,417 | - | ~$300 |
-| Reachable | 78 | 94.5% | ~$16 |
-| CodeQL | 2 | 99.9% | **$0.69** |
-| Exploitable | 2 | 99.9% | $0.69 |
+| Level       | Units | Reduction | Agentic Cost |
+| ----------- | ----- | --------- | ------------ |
+| All         | 1,417 | -         | ~$300        |
+| Reachable   | 78    | 94.5%     | ~$16         |
+| CodeQL      | 2     | 99.9%     | **$0.69**    |
+| Exploitable | 2     | 99.9%     | $0.69        |
 
 **CodeQL Findings:**
 - 11 security findings detected
@@ -611,12 +611,12 @@ Tested on Flowise `packages/components` (1,417 units):
 
 ### 7.5 What Each Level Excludes
 
-| Level | Code NOT Processed | Risk |
-|-------|-------------------|------|
-| 1: all | None | None |
-| 2: reachable | Internal utilities, dead code, non-entry-point functions | Low - misses unreachable vulnerabilities |
-| 3: codeql | Reachable code without known vulnerability patterns | Medium - misses novel/logic flaws |
-| 4: exploitable | security_control, neutral, vulnerable_internal | Low - depends on LLM accuracy |
+| Level          | Code NOT Processed                                       | Risk                                     |
+| -------------- | -------------------------------------------------------- | ---------------------------------------- |
+| 1: all         | None                                                     | None                                     |
+| 2: reachable   | Internal utilities, dead code, non-entry-point functions | Low - misses unreachable vulnerabilities |
+| 3: codeql      | Reachable code without known vulnerability patterns      | Medium - misses novel/logic flaws        |
+| 4: exploitable | security_control, neutral, vulnerable_internal           | Low - depends on LLM accuracy            |
 
 ### 7.6 CodeQL Requirements
 
@@ -638,35 +638,35 @@ codeql pack download codeql/python-queries
 
 ## Reference Files
 
-| File | Location | Purpose |
-|------|----------|---------|
-| repository_scanner.js | `parsers/javascript/` | Stage 1: File enumeration |
-| typescript_analyzer.js | External | Stage 2: Function extraction |
-| dependency_resolver.js | `parsers/javascript/` | Call graph building |
-| unit_generator.js | `parsers/javascript/` | Stage 3: Dataset generation (OpenAnt format) |
-| context_enhancer.py | `utilities/` | Stage 4: LLM enhancement (both modes) |
-| agentic_enhancer/ | `utilities/` | Agentic enhancement module |
-| entry_point_detector.py | `utilities/agentic_enhancer/` | Entry point detection |
-| reachability_analyzer.py | `utilities/agentic_enhancer/` | User input reachability analysis |
-| test_pipeline.py | `parsers/javascript/` | Pipeline orchestration |
-| validate_dataset_schema.py | `openant/` | Validate OpenAnt schema compliance |
-| PARSER_PIPELINE.md | `parsers/javascript/` | Complete pipeline documentation |
+| File                       | Location                      | Purpose                                      |
+| -------------------------- | ----------------------------- | -------------------------------------------- |
+| repository_scanner.js      | `parsers/javascript/`         | Stage 1: File enumeration                    |
+| typescript_analyzer.js     | External                      | Stage 2: Function extraction                 |
+| dependency_resolver.js     | `parsers/javascript/`         | Call graph building                          |
+| unit_generator.js          | `parsers/javascript/`         | Stage 3: Dataset generation (OpenAnt format) |
+| context_enhancer.py        | `utilities/`                  | Stage 4: LLM enhancement (both modes)        |
+| agentic_enhancer/          | `utilities/`                  | Agentic enhancement module                   |
+| entry_point_detector.py    | `utilities/agentic_enhancer/` | Entry point detection                        |
+| reachability_analyzer.py   | `utilities/agentic_enhancer/` | User input reachability analysis             |
+| test_pipeline.py           | `parsers/javascript/`         | Pipeline orchestration                       |
+| validate_dataset_schema.py | `openant/`                    | Validate OpenAnt schema compliance           |
+| PARSER_PIPELINE.md         | `parsers/javascript/`         | Complete pipeline documentation              |
 
 ---
 
 ## Success Criteria — VERIFIED
 
-| Criterion | Status | Notes |
-|-----------|--------|-------|
-| Coverage Test | PASS | RepositoryScanner processes all source files |
-| Completeness Test | PASS | UnitGenerator creates units for all functions |
-| Self-Containment Test | PASS | Dependencies assembled into primary_code |
-| Dependency Test | PASS | Upstream/downstream included with file boundaries |
-| LLM Enhancement | PASS | ContextEnhancer adds missing context |
-| OpenAnt Format | PASS | Output validated with validate_dataset_schema.py |
-| Experiment.py Integration | PASS | `is_enhanced=true` recognized, multifile prompts used |
-| Security Intent Detection | PASS | Agentic mode achieves 100% accuracy on test set |
-| Reachability Classification | PASS | Entry points detected, reachability paths traced |
+| Criterion                   | Status | Notes                                                 |
+| --------------------------- | ------ | ----------------------------------------------------- |
+| Coverage Test               | PASS   | RepositoryScanner processes all source files          |
+| Completeness Test           | PASS   | UnitGenerator creates units for all functions         |
+| Self-Containment Test       | PASS   | Dependencies assembled into primary_code              |
+| Dependency Test             | PASS   | Upstream/downstream included with file boundaries     |
+| LLM Enhancement             | PASS   | ContextEnhancer adds missing context                  |
+| OpenAnt Format              | PASS   | Output validated with validate_dataset_schema.py      |
+| Experiment.py Integration   | PASS   | `is_enhanced=true` recognized, multifile prompts used |
+| Security Intent Detection   | PASS   | Agentic mode achieves 100% accuracy on test set       |
+| Reachability Classification | PASS   | Entry points detected, reachability paths traced      |
 
 ---
 

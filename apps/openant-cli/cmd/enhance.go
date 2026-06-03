@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/knostic/open-ant-cli/internal/output"
@@ -28,6 +29,7 @@ var (
 	enhanceRepoPath       string
 	enhanceMode           string
 	enhanceCheckpoint     string
+	enhanceWorkers        int
 )
 
 func init() {
@@ -36,6 +38,7 @@ func init() {
 	enhanceCmd.Flags().StringVar(&enhanceRepoPath, "repo-path", "", "Path to the repository (required for agentic mode)")
 	enhanceCmd.Flags().StringVar(&enhanceMode, "mode", "agentic", "Enhancement mode: agentic (thorough) or single-shot (fast)")
 	enhanceCmd.Flags().StringVar(&enhanceCheckpoint, "checkpoint", "", "Path to save/resume checkpoint (agentic mode)")
+	enhanceCmd.Flags().IntVar(&enhanceWorkers, "workers", 1, "Worker threads for the per-unit loop (default: 1 = sequential)")
 }
 
 func runEnhance(cmd *cobra.Command, args []string) {
@@ -79,6 +82,9 @@ func runEnhance(cmd *cobra.Command, args []string) {
 	}
 	if enhanceCheckpoint != "" {
 		pyArgs = append(pyArgs, "--checkpoint", enhanceCheckpoint)
+	}
+	if enhanceWorkers > 1 {
+		pyArgs = append(pyArgs, "--workers", fmt.Sprintf("%d", enhanceWorkers))
 	}
 
 	pat, account, user := requireSnowflakeCreds()

@@ -16,7 +16,7 @@ from .schema import validate_pipeline_output, ValidationError
 load_dotenv()
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
-MODEL = "claude-opus-4-6"  # mapped to Snowflake name at call time
+MODEL = "claude-sonnet-4-6"  # mapped to Snowflake name at call time
 
 
 def _check_api_key():

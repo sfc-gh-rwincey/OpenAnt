@@ -55,6 +55,8 @@ def scan_repository(
     dynamic_test: bool = False,
     since: str | None = None,
     diff_base: str | None = None,
+    workers: int = 1,
+    checkpoint_path: str | None = None,
 ) -> ScanResult:
     """Scan a repository for vulnerabilities.
 
@@ -83,6 +85,13 @@ def scan_repository(
         enhance: If True, run agentic/single-shot context enhancement.
         enhance_mode: ``"agentic"`` (thorough) or ``"single-shot"`` (fast).
         dynamic_test: If True, run Docker-isolated dynamic testing (requires Docker).
+        workers: Number of worker threads for the per-unit / per-finding loops
+            in enhance, analyze, verify, and dynamic-test. <=1 → sequential.
+        checkpoint_path: Path to save/resume the agentic-enhance checkpoint.
+            If ``None`` and the enhance step runs in agentic mode, defaults to
+            ``<output_dir>/enhance_checkpoint.json`` so a crashed run is
+            always resumable. Pass an empty string to disable checkpointing
+            explicitly. Has no effect when ``enhance_mode == "single-shot"``.
 
     Returns:
         ScanResult with paths to all generated files and metrics.
@@ -110,7 +119,7 @@ def scan_repository(
 
     _print_banner(repo_path, output_dir, language, processing_level,
                   verify, generate_context, enhance, enhance_mode,
-                  generate_report, dynamic_test, since, diff_base)
+                  generate_report, dynamic_test, since, diff_base, workers)
 
     # ---------------------------------------------------------------
     # Step 1: Parse
@@ -231,11 +240,31 @@ def scan_repository(
 
         enhanced_path = os.path.join(output_dir, "dataset_enhanced.json")
 
+        # Resolve the effective checkpoint path. Caller can:
+        #   - pass None       -> auto-checkpoint into the output dir (agentic only)
+        #   - pass ""         -> explicitly disable checkpointing
+        #   - pass "/path"    -> use exactly that path
+        # Single-shot mode ignores checkpoints regardless.
+        if enhance_mode == "agentic":
+            if checkpoint_path is None:
+                effective_checkpoint = os.path.join(
+                    output_dir, "enhance_checkpoint.json")
+            elif checkpoint_path == "":
+                effective_checkpoint = None
+            else:
+                effective_checkpoint = checkpoint_path
+        else:
+            effective_checkpoint = None
+
+        if effective_checkpoint:
+            print(f"  Checkpoint: {effective_checkpoint}", file=sys.stderr)
+
         with step_context("enhance", output_dir, inputs={
             "dataset_path": active_dataset_path,
             "analyzer_output_path": parse_result.analyzer_output_path,
             "repo_path": repo_path,
             "mode": enhance_mode,
+            "checkpoint_path": effective_checkpoint,
         }) as ctx:
             enhance_result = enhance_dataset(
                 dataset_path=active_dataset_path,
@@ -243,6 +272,8 @@ def scan_repository(
                 analyzer_output_path=parse_result.analyzer_output_path,
                 repo_path=repo_path,
                 mode=enhance_mode,
+                checkpoint_path=effective_checkpoint,
+                workers=workers,
             )
 
             ctx.summary = {
@@ -286,6 +317,7 @@ def scan_repository(
             repo_path=repo_path,
             limit=limit,
             model=model,
+            workers=workers,
         )
 
         ctx.summary = {
@@ -333,6 +365,7 @@ def scan_repository(
                 analyzer_output_path=parse_result.analyzer_output_path,
                 app_context_path=app_context_path,
                 repo_path=repo_path,
+                workers=workers,
             )
 
             ctx.summary = {
@@ -472,6 +505,7 @@ def scan_repository(
                 dt_result = run_tests(
                     pipeline_output_path=pipeline_output_path,
                     output_dir=output_dir,
+                    workers=workers,
                 )
 
                 ctx.summary = {
@@ -622,6 +656,7 @@ def _print_banner(
     dynamic_test: bool,
     since: str | None = None,
     diff_base: str | None = None,
+    workers: int = 1,
 ) -> None:
     """Print the scan configuration banner."""
     print("=" * 60, file=sys.stderr)
@@ -640,6 +675,7 @@ def _print_banner(
     print(f"  App context:   {generate_context}", file=sys.stderr)
     print(f"  Report:        {generate_report}", file=sys.stderr)
     print(f"  Dynamic test:  {dynamic_test}", file=sys.stderr)
+    print(f"  Workers:       {workers}{' (sequential)' if workers <= 1 else ''}", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     print(file=sys.stderr)
 

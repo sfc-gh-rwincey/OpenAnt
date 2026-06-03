@@ -25,8 +25,11 @@ from .entry_point_detector import EntryPointDetector
 from .reachability_analyzer import ReachabilityAnalyzer
 
 
-# Use Sonnet for exploration (cost-effective)
-AGENT_MODEL = map_model_name("claude-opus-4-20250514")
+# Default model for agentic enhancement.
+# Sonnet is the default — the agent does up to MAX_ITERATIONS tool-use
+# round-trips per unit, so cost adds up fast. Sonnet is sufficient for
+# call-graph exploration; Opus is available via configuration if needed.
+AGENT_MODEL = map_model_name("claude-sonnet-4-6")
 
 # Safety limits
 MAX_ITERATIONS = 20

@@ -19,32 +19,32 @@ State machine additions in `autopilot/state.py`:
 
 ## File Inventory
 
-| File | Purpose | Key Functions/Classes |
-|------|---------|----------------------|
-| `__init__.py` | Public API | `run_dynamic_tests(pipeline_output_path, output_dir)` |
-| `__main__.py` | CLI entry | `python -m utilities.dynamic_tester <path>` |
-| `models.py` | Data models | `DynamicTestResult`, `TestEvidence`, `VALID_STATUSES` |
-| `test_generator.py` | LLM test gen | `generate_test()`, `regenerate_test()` |
-| `docker_executor.py` | Container exec | `run_single_container()`, `_sanitize_compose()` |
-| `result_collector.py` | Parse output | `collect_result()` |
-| `reporter.py` | Markdown report | `generate_report()` |
-| `docker_templates/python.Dockerfile` | Base Python image | `python:3.11-slim` |
-| `docker_templates/node.Dockerfile` | Base Node image | `node:20-slim` |
-| `docker_templates/go.Dockerfile` | Base Go image | `golang:1.22-alpine` |
-| `docker_templates/attacker_server.py` | Capture server | Port 9999, endpoints: `/health`, `/capture`, `/logs`, `/logs/clear` |
+| File                                  | Purpose           | Key Functions/Classes                                               |
+| ------------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `__init__.py`                         | Public API        | `run_dynamic_tests(pipeline_output_path, output_dir)`               |
+| `__main__.py`                         | CLI entry         | `python -m utilities.dynamic_tester <path>`                         |
+| `models.py`                           | Data models       | `DynamicTestResult`, `TestEvidence`, `VALID_STATUSES`               |
+| `test_generator.py`                   | LLM test gen      | `generate_test()`, `regenerate_test()`                              |
+| `docker_executor.py`                  | Container exec    | `run_single_container()`, `_sanitize_compose()`                     |
+| `result_collector.py`                 | Parse output      | `collect_result()`                                                  |
+| `reporter.py`                         | Markdown report   | `generate_report()`                                                 |
+| `docker_templates/python.Dockerfile`  | Base Python image | `python:3.11-slim`                                                  |
+| `docker_templates/node.Dockerfile`    | Base Node image   | `node:20-slim`                                                      |
+| `docker_templates/go.Dockerfile`      | Base Go image     | `golang:1.22-alpine`                                                |
+| `docker_templates/attacker_server.py` | Capture server    | Port 9999, endpoints: `/health`, `/capture`, `/logs`, `/logs/clear` |
 
 ## Modified Existing Files
 
-| File | Change |
-|------|--------|
-| `autopilot/state.py` | Added `DYNAMIC_TESTED`, `DYNAMIC_TEST_SKIPPED` to `RepoState` |
-| `autopilot/config.py` | Added `dynamic_test: StepBudget` to `BudgetsConfig` (default $5.00) |
-| `autopilot/cost.py` | Added `dynamic_test: 0.15` to `COST_RATES`, added to `estimate_pipeline_costs()` |
-| `autopilot/pipeline.py` | Inserted `dynamic_test_repo()` between verify and report in state dispatch |
-| `autopilot/api_runner.py` | Added dynamic_test step to API mode processing |
-| `autopilot/steps/__init__.py` | Added `dynamic_test_repo` import and export |
-| `autopilot/steps/report.py` | Fixed `_build_pipeline_output()` to populate fields from Stage 1 results when `vulnerabilities` array is empty |
-| `autopilot/steps/verify.py` | Added `reasoning` and `function_analyzed` to confirmed findings pass-through |
+| File                          | Change                                                                                                         |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `autopilot/state.py`          | Added `DYNAMIC_TESTED`, `DYNAMIC_TEST_SKIPPED` to `RepoState`                                                  |
+| `autopilot/config.py`         | Added `dynamic_test: StepBudget` to `BudgetsConfig` (default $5.00)                                            |
+| `autopilot/cost.py`           | Added `dynamic_test: 0.15` to `COST_RATES`, added to `estimate_pipeline_costs()`                               |
+| `autopilot/pipeline.py`       | Inserted `dynamic_test_repo()` between verify and report in state dispatch                                     |
+| `autopilot/api_runner.py`     | Added dynamic_test step to API mode processing                                                                 |
+| `autopilot/steps/__init__.py` | Added `dynamic_test_repo` import and export                                                                    |
+| `autopilot/steps/report.py`   | Fixed `_build_pipeline_output()` to populate fields from Stage 1 results when `vulnerabilities` array is empty |
+| `autopilot/steps/verify.py`   | Added `reasoning` and `function_analyzed` to confirmed findings pass-through                                   |
 
 ## Data Flow
 
@@ -141,7 +141,7 @@ The `_build_pipeline_output()` function was fixed to handle the actual Stage 1 o
 
 ## Key Dependencies
 
-- `utilities/llm_client.py` — `AnthropicClient`, `TokenTracker` (Sonnet model: `claude-sonnet-4-20250514`)
+- `utilities/llm_client.py` — `AnthropicClient`, `TokenTracker` (Sonnet model: `claude-sonnet-4-6`)
 - Docker Engine — must be running for container execution
 - No additional pip packages required (uses stdlib `subprocess` for Docker CLI)
 

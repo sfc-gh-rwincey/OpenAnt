@@ -78,8 +78,8 @@ Manual Override:
 
     parser.add_argument(
         "--model", "-m",
-        default="claude-opus-4-20250514",
-        help="Anthropic model to use (default: claude-opus-4-20250514)",
+        default="claude-opus-4-6",
+        help="Anthropic model to use (default: claude-opus-4-6)",
     )
 
     parser.add_argument(

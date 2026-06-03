@@ -10,11 +10,13 @@ Stage 2 verification is handled separately by ``core.verifier``.
 import json
 import os
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
 from core.schemas import AnalyzeResult, AnalysisMetrics, UsageInfo
 from core import tracking
+from core.parallel import parallel_map, resolve_workers, announce_parallelism
 
 # Import existing analysis machinery
 from utilities.llm_client import AnthropicClient, get_global_tracker
@@ -45,6 +47,7 @@ def run_analysis(
     limit: int | None = None,
     model: str = "opus",
     exploitable_only: bool = False,
+    workers: int = 1,
 ) -> AnalyzeResult:
     """Run Stage 1 vulnerability detection on a dataset.
 
@@ -63,6 +66,9 @@ def run_analysis(
         model: "opus" or "sonnet".
         exploitable_only: If True, only analyze units classified as exploitable
             by the agentic enhancer (requires enhanced dataset).
+        workers: Number of worker threads for the per-unit detection loop.
+            <=1 → sequential (legacy behavior). The Stage 1 consistency
+            check that runs after the loop remains sequential by design.
 
     Returns:
         AnalyzeResult with results path, metrics, and usage.
@@ -73,7 +79,7 @@ def run_analysis(
     tracking.reset_tracking()
 
     # Select model
-    model_id = "claude-opus-4-6" if model == "opus" else "claude-sonnet-4-20250514"
+    model_id = "claude-opus-4-6" if model == "opus" else "claude-sonnet-4-6"
     print(f"[Analyze] Model: {model_id}", file=sys.stderr)
 
     # Initialize client
@@ -86,7 +92,8 @@ def run_analysis(
     app_context = None
     if app_context_path and HAS_APP_CONTEXT and os.path.exists(app_context_path):
         app_context = load_context(Path(app_context_path))
-        print(f"[Analyze] App context: {app_context.application_type}", file=sys.stderr)
+        print(
+            f"[Analyze] App context: {app_context.application_type}", file=sys.stderr)
 
     # Load dataset
     print(f"[Analyze] Loading dataset: {dataset_path}", file=sys.stderr)
@@ -102,7 +109,8 @@ def run_analysis(
             u for u in units
             if u.get("agent_context", {}).get("security_classification") in ("exploitable", "vulnerable")
         ]
-        print(f"[Analyze] Exploitable filter: {original_count} -> {len(units)} units", file=sys.stderr)
+        print(
+            f"[Analyze] Exploitable filter: {original_count} -> {len(units)} units", file=sys.stderr)
 
     if limit:
         units = units[:limit]
@@ -110,8 +118,7 @@ def run_analysis(
     print(f"[Analyze] Analyzing {len(units)} units...", file=sys.stderr)
 
     # --- Stage 1: Detection ---
-    results = []
-    code_by_route = {}
+    code_by_route: dict = {}
     counts = {
         "vulnerable": 0,
         "bypassable": 0,
@@ -120,11 +127,15 @@ def run_analysis(
         "safe": 0,
         "errors": 0,
     }
+    counts_lock = threading.Lock()
+    code_lock = threading.Lock()
 
-    for i, unit in enumerate(units):
-        uid = unit.get("id", f"unit_{i}")
-        print(f"  [{i+1}/{len(units)}] {uid}", file=sys.stderr, end="")
+    effective_workers = resolve_workers(workers, len(units))
+    announce_parallelism("Analyze", effective_workers, len(units))
 
+    def _process_unit(idx_unit):
+        idx, unit = idx_unit
+        uid = unit.get("id", f"unit_{idx}")
         try:
             result = analyze_unit(
                 client, unit,
@@ -132,42 +143,43 @@ def run_analysis(
                 json_corrector=json_corrector,
                 app_context=app_context,
             )
-
-            # Ensure unit_id is always present
             result["unit_id"] = uid
-
-            # Ensure finding field is always set (may be None after JSON correction)
             if not result.get("finding") and result.get("verdict"):
                 result["finding"] = result["verdict"].lower()
 
-            results.append(result)
-
-            # Track code for verify step (code_by_route persisted in results.json)
             route_key = result.get("route_key", uid)
             code_field = unit.get("code", {})
-            if isinstance(code_field, dict):
-                code_by_route[route_key] = code_field.get("primary_code", "")
-            else:
-                code_by_route[route_key] = code_field
+            code_str = code_field.get("primary_code", "") if isinstance(code_field, dict) else code_field
+            with code_lock:
+                code_by_route[route_key] = code_str
 
-            # Count verdicts
             finding = result.get("finding", "error")
-            if finding in counts:
-                counts[finding] += 1
-            elif result.get("verdict") == "ERROR":
-                counts["errors"] += 1
+            with counts_lock:
+                if finding in counts:
+                    counts[finding] += 1
+                elif result.get("verdict") == "ERROR":
+                    counts["errors"] += 1
 
-            print(f" -> {finding}", file=sys.stderr)
-
+            print(f"  [{idx+1}/{len(units)}] {uid} -> {finding}", file=sys.stderr, flush=True)
+            return result
         except Exception as e:
-            print(f" -> ERROR: {e}", file=sys.stderr)
-            counts["errors"] += 1
-            results.append({
+            print(f"  [{idx+1}/{len(units)}] {uid} -> ERROR: {e}", file=sys.stderr, flush=True)
+            with counts_lock:
+                counts["errors"] += 1
+            return {
                 "unit_id": uid,
                 "verdict": "ERROR",
                 "finding": "error",
                 "error": str(e),
-            })
+            }
+
+    results = parallel_map(
+        _process_unit,
+        list(enumerate(units)),
+        workers=effective_workers,
+        on_error="skip",
+        thread_name_prefix="openant-analyze",
+    )
 
     tracking.log_usage("Stage 1")
 
@@ -176,13 +188,15 @@ def run_analysis(
     try:
         from utilities.stage1_consistency import run_stage1_consistency_check
         print("\n[Analyze] Running consistency check...", file=sys.stderr)
-        results = run_stage1_consistency_check(results, code_by_route, get_global_tracker())
+        results = run_stage1_consistency_check(
+            results, code_by_route, get_global_tracker())
         # Count corrections
         for r in results:
             if r.get("stage1_consistency_update"):
                 consistency_corrections += 1
         if consistency_corrections:
-            print(f"  Consistency corrections: {consistency_corrections}", file=sys.stderr)
+            print(
+                f"  Consistency corrections: {consistency_corrections}", file=sys.stderr)
             # Recount after corrections
             counts = {k: 0 for k in counts}
             for r in results:
@@ -192,9 +206,11 @@ def run_analysis(
                 elif r.get("verdict") == "ERROR":
                     counts["errors"] += 1
     except ImportError:
-        print("[Analyze] Stage 1 consistency check not available, skipping.", file=sys.stderr)
+        print(
+            "[Analyze] Stage 1 consistency check not available, skipping.", file=sys.stderr)
     except Exception as e:
-        print(f"[Analyze] Consistency check error (non-fatal): {e}", file=sys.stderr)
+        print(
+            f"[Analyze] Consistency check error (non-fatal): {e}", file=sys.stderr)
 
     # --- Write results ---
     results_path = os.path.join(output_dir, "results.json")

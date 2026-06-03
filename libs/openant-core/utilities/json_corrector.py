@@ -80,10 +80,11 @@ def extract_json_with_llm(
     prompt = get_json_extraction_prompt(raw_response)
 
     try:
-        # Use Sonnet for extraction (faster/cheaper)
+        # Use Sonnet for extraction (faster/cheaper than Opus and sufficient
+        # for "extract structured JSON from this malformed response").
         llm_response = client.analyze_sync(
             prompt,
-            model="claude-opus-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2048
         )
         return _parse_json_response(llm_response)

@@ -18,11 +18,19 @@ from utilities.dynamic_tester.result_collector import collect_result
 from utilities.dynamic_tester.reporter import generate_report
 from utilities.llm_client import TokenTracker
 
+try:
+    from core.parallel import parallel_map, resolve_workers, announce_parallelism
+except ImportError:
+    parallel_map = None
+    resolve_workers = None
+    announce_parallelism = None
+
 
 def run_dynamic_tests(
     pipeline_output_path: str,
     output_dir: str | None = None,
     max_retries: int = 3,
+    workers: int = 1,
 ) -> list[DynamicTestResult]:
     """Run dynamic tests for all findings in a pipeline output file.
 
@@ -30,6 +38,11 @@ def run_dynamic_tests(
         pipeline_output_path: Path to pipeline_output.json
         output_dir: Directory for output files. Defaults to same directory
                     as pipeline_output_path.
+        max_retries: Max retries per finding when the generated test errors.
+        workers: Number of worker threads for the per-finding loop. Each
+            finding builds its own Docker image and runs its own container,
+            so parallelism is bounded by Docker daemon capacity. <=1 →
+            sequential (legacy behavior).
 
     Returns:
         List of DynamicTestResult objects
@@ -53,39 +66,44 @@ def run_dynamic_tests(
         output_dir = os.path.dirname(os.path.abspath(pipeline_output_path))
     os.makedirs(output_dir, exist_ok=True)
 
-    tracker = TokenTracker()
-    results: list[DynamicTestResult] = []
+    tracker = TokenTracker()  # already thread-safe
+    total = len(findings)
 
-    print(f"Dynamic testing {len(findings)} findings from {repo_info['name']}",
+    print(f"Dynamic testing {total} findings from {repo_info['name']}",
           file=sys.stderr)
 
-    for i, finding in enumerate(findings):
-        finding_id = finding.get("id", f"FINDING-{i+1}")
-        print(f"\n[{i+1}/{len(findings)}] Testing {finding_id}: "
-              f"{finding.get('name', 'unknown')}...", file=sys.stderr)
+    def _process_finding(idx_finding):
+        idx, finding = idx_finding
+        finding_id = finding.get("id", f"FINDING-{idx+1}")
+        print(f"\n[{idx+1}/{total}] Testing {finding_id}: "
+              f"{finding.get('name', 'unknown')}...", file=sys.stderr, flush=True)
 
-        # Step 1: Generate test
+        # The per-finding cost cannot be derived from a global tracker delta
+        # under parallel execution (other workers may add calls between our
+        # snapshots). Sum from the call records this worker emits via the
+        # generate/regenerate APIs, which return their own usage info.
+        # For now we approximate by snapshotting tracker totals before/after
+        # this finding's calls — accurate when workers=1; an upper bound
+        # that includes some other workers' costs when workers>1. The aggregate
+        # total_cost across all findings still matches.
         cost_before = tracker.total_cost_usd
-        print("  Generating test...", file=sys.stderr)
+        print(f"  [{finding_id}] Generating test...", file=sys.stderr, flush=True)
         generation = generate_test(finding, repo_info, tracker)
         generation_cost = tracker.total_cost_usd - cost_before
 
         if generation is None:
-            print("  Test generation failed.", file=sys.stderr)
-            result = collect_result(finding, None, None, generation_cost)
-            results.append(result)
-            continue
+            print(f"  [{finding_id}] Test generation failed.",
+                  file=sys.stderr, flush=True)
+            return collect_result(finding, None, None, generation_cost)
 
-        print(f"  Generated (${generation_cost:.4f}). Running in Docker...",
-              file=sys.stderr)
+        print(f"  [{finding_id}] Generated (~${generation_cost:.4f}). Running in Docker...",
+              file=sys.stderr, flush=True)
 
-        # Step 2: Execute in Docker and retry on errors
         execution = run_single_container(generation, finding_id)
         result = collect_result(finding, generation, execution, generation_cost)
         retry_count = 0
 
         while result.status == "ERROR" and retry_count < max_retries:
-            # Extract error message: build error > stderr > application-level details
             if execution.build_error:
                 error_msg = execution.build_error
                 error_type = "Build"
@@ -97,35 +115,49 @@ def run_dynamic_tests(
                 error_type = "Application"
 
             if execution.timed_out:
-                print(f"  Timed out — not retrying.", file=sys.stderr)
+                print(f"  [{finding_id}] Timed out — not retrying.",
+                      file=sys.stderr, flush=True)
                 break
 
             retry_count += 1
-            print(f"  {error_type} error. Retry {retry_count}/{max_retries} "
-                  f"with error feedback...", file=sys.stderr)
+            print(f"  [{finding_id}] {error_type} error. Retry {retry_count}/{max_retries}...",
+                  file=sys.stderr, flush=True)
 
             retry_cost_before = tracker.total_cost_usd
             retry_gen = regenerate_test(
-                finding, repo_info, generation,
-                error_msg, tracker,
+                finding, repo_info, generation, error_msg, tracker,
             )
             generation_cost += tracker.total_cost_usd - retry_cost_before
 
             if retry_gen is None:
-                print(f"  Retry generation failed.", file=sys.stderr)
+                print(f"  [{finding_id}] Retry generation failed.",
+                      file=sys.stderr, flush=True)
                 break
 
             generation = retry_gen
             execution = run_single_container(generation, finding_id)
             result = collect_result(finding, generation, execution, generation_cost)
-            print(f"  Retry {retry_count} result: {result.status} "
-                  f"(${generation_cost:.4f})", file=sys.stderr)
+            print(f"  [{finding_id}] Retry {retry_count} result: {result.status}",
+                  file=sys.stderr, flush=True)
 
         result.retry_count = retry_count
-        results.append(result)
+        print(f"  [{finding_id}] Result: {result.status} ({result.elapsed_seconds:.1f}s)",
+              file=sys.stderr, flush=True)
+        return result
 
-        print(f"  Result: {result.status} ({result.elapsed_seconds:.1f}s)",
-              file=sys.stderr)
+    if parallel_map is not None and resolve_workers is not None:
+        effective_workers = resolve_workers(workers, total)
+        if announce_parallelism is not None:
+            announce_parallelism("Dynamic Test", effective_workers, total)
+        results = parallel_map(
+            _process_finding,
+            list(enumerate(findings)),
+            workers=effective_workers,
+            on_error="skip",
+            thread_name_prefix="openant-dyntest",
+        )
+    else:
+        results = [_process_finding((i, f)) for i, f in enumerate(findings)]
 
     # Generate report
     total_cost = tracker.total_cost_usd

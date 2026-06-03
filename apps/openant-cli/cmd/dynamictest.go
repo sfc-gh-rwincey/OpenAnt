@@ -27,11 +27,13 @@ If no path is given, the active project's pipeline_output.json is used.`,
 var (
 	dynamicTestOutput     string
 	dynamicTestMaxRetries int
+	dynamicTestWorkers    int
 )
 
 func init() {
 	dynamicTestCmd.Flags().StringVarP(&dynamicTestOutput, "output", "o", "", "Output directory")
 	dynamicTestCmd.Flags().IntVar(&dynamicTestMaxRetries, "max-retries", 3, "Max retries per finding on error")
+	dynamicTestCmd.Flags().IntVar(&dynamicTestWorkers, "workers", 1, "Worker threads for per-finding Docker testing (default: 1 = sequential, bounded by Docker daemon)")
 }
 
 func runDynamicTest(cmd *cobra.Command, args []string) {
@@ -60,6 +62,9 @@ func runDynamicTest(cmd *cobra.Command, args []string) {
 	}
 	if dynamicTestMaxRetries != 3 {
 		pyArgs = append(pyArgs, "--max-retries", fmt.Sprintf("%d", dynamicTestMaxRetries))
+	}
+	if dynamicTestWorkers > 1 {
+		pyArgs = append(pyArgs, "--workers", fmt.Sprintf("%d", dynamicTestWorkers))
 	}
 
 	pat, account, user := requireSnowflakeCreds()

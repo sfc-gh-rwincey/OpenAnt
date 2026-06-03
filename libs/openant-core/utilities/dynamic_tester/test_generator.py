@@ -12,7 +12,7 @@ import re
 
 from utilities.llm_client import AnthropicClient, TokenTracker
 
-SONNET_MODEL = "claude-sonnet-4-20250514"
+SONNET_MODEL = "claude-sonnet-4-6"
 
 # Map language strings to Dockerfile template names
 LANGUAGE_MAP = {
@@ -114,7 +114,8 @@ def _build_finding_prompt(finding: dict, repo_info: dict) -> str:
     if finding.get("impact"):
         parts.extend(["", f"  Impact: {finding['impact']}"])
     if finding.get("steps_to_reproduce"):
-        parts.extend(["", f"  Steps to Reproduce: {finding['steps_to_reproduce']}"])
+        parts.extend(
+            ["", f"  Steps to Reproduce: {finding['steps_to_reproduce']}"])
 
     # Add CWE-specific guidance
     cwe_id = finding.get("cwe_id", 0)
@@ -251,7 +252,8 @@ def regenerate_test(
         f"- Application-level errors: check the error details and fix the test logic"
     )
 
-    raw = client.analyze_sync(retry_prompt, max_tokens=8192, system=SYSTEM_PROMPT)
+    raw = client.analyze_sync(
+        retry_prompt, max_tokens=8192, system=SYSTEM_PROMPT)
 
     parsed = _parse_generation_response(raw)
     if not parsed:

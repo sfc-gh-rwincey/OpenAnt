@@ -14,29 +14,29 @@ The OpenAnt parser pipeline transforms JavaScript/TypeScript repositories into s
 
 The pipeline supports four processing levels with cumulative filtering:
 
-| Level | Name | Filter | Stages | Cost |
-|-------|------|--------|--------|------|
-| 1 | `all` | None | 1-3 | Highest |
-| 2 | `reachable` | Entry point reachability | 1-3 + 3.5 | Moderate |
-| 3 | `codeql` | Reachable + CodeQL-flagged | 1-3 + 3.5 + 3.6-3.7 | Low |
-| 4 | `exploitable` | Reachable + CodeQL + Exploitable | 1-3 + 3.5 + 3.6-3.7 + 4 + 4.5 | Lowest |
+| Level | Name          | Filter                           | Stages                        | Cost     |
+| ----- | ------------- | -------------------------------- | ----------------------------- | -------- |
+| 1     | `all`         | None                             | 1-3                           | Highest  |
+| 2     | `reachable`   | Entry point reachability         | 1-3 + 3.5                     | Moderate |
+| 3     | `codeql`      | Reachable + CodeQL-flagged       | 1-3 + 3.5 + 3.6-3.7           | Low      |
+| 4     | `exploitable` | Reachable + CodeQL + Exploitable | 1-3 + 3.5 + 3.6-3.7 + 4 + 4.5 | Lowest   |
 
 **Example cost savings (Flowise `packages/components`):**
 
-| Level | Units | Reduction |
-|-------|-------|-----------|
-| All | 1,417 | - |
-| Reachable | 78 | 94.5% |
-| CodeQL | 2 | 99.9% |
-| Exploitable | 2 | 99.9% |
+| Level       | Units | Reduction |
+| ----------- | ----- | --------- |
+| All         | 1,417 | -         |
+| Reachable   | 78    | 94.5%     |
+| CodeQL      | 2     | 99.9%     |
+| Exploitable | 2     | 99.9%     |
 
 **What each level excludes:**
 
-| Level | Code NOT Processed |
-|-------|-------------------|
-| 1: all | None - complete coverage |
-| 2: reachable | Internal utilities, dead code, non-entry-point reachable functions |
-| 3: codeql | Reachable code without known vulnerability patterns (SQLi, XSS, etc.) |
+| Level          | Code NOT Processed                                                                  |
+| -------------- | ----------------------------------------------------------------------------------- |
+| 1: all         | None - complete coverage                                                            |
+| 2: reachable   | Internal utilities, dead code, non-entry-point reachable functions                  |
+| 3: codeql      | Reachable code without known vulnerability patterns (SQLi, XSS, etc.)               |
 | 4: exploitable | CodeQL-flagged code classified as security_control, neutral, or vulnerable_internal |
 
 ---
@@ -270,12 +270,12 @@ node repository_scanner.js <repo_path> [--output <file>] [--exclude <patterns>]
 ```
 
 **Unit Types**:
-| Type | Detection |
-|------|-----------|
+| Type            | Detection                                            |
+| --------------- | ---------------------------------------------------- |
 | `route_handler` | Has `(req, res)` or `(request, response)` parameters |
-| `middleware` | Has `(req, res, next)` parameters or calls `next()` |
-| `class_method` | Method inside a class |
-| `function` | Default for standalone functions |
+| `middleware`    | Has `(req, res, next)` parameters or calls `next()`  |
+| `class_method`  | Method inside a class                                |
+| `function`      | Default for standalone functions                     |
 
 **CLI**:
 ```bash
@@ -340,13 +340,13 @@ node typescript_analyzer.js <repo_path> --files-from <file_list.txt> --output <o
 ```
 
 **Key Format Requirements** (for OpenAnt compatibility):
-| Field | Required | Description |
-|-------|----------|-------------|
-| `code.primary_code` | Yes | All code assembled with `// ========== File Boundary ==========` separators |
-| `code.primary_origin.enhanced` | Yes | `true` if dependencies included, `false` otherwise |
-| `code.primary_origin.files_included` | Yes | List of all files whose code is in `primary_code` |
-| `code.primary_origin.original_length` | Yes | Length of primary function code only |
-| `code.primary_origin.enhanced_length` | Yes | Length of assembled code with dependencies |
+| Field                                 | Required | Description                                                                 |
+| ------------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `code.primary_code`                   | Yes      | All code assembled with `// ========== File Boundary ==========` separators |
+| `code.primary_origin.enhanced`        | Yes      | `true` if dependencies included, `false` otherwise                          |
+| `code.primary_origin.files_included`  | Yes      | List of all files whose code is in `primary_code`                           |
+| `code.primary_origin.original_length` | Yes      | Length of primary function code only                                        |
+| `code.primary_origin.enhanced_length` | Yes      | Length of assembled code with dependencies                                  |
 
 **Validation**: Use `validate_dataset_schema.py` to verify output before LLM operations:
 ```bash
@@ -378,14 +378,14 @@ Options:
 
 **Purpose**: Enhance static analysis with LLM-identified context using Claude Sonnet.
 
-**Model**: `claude-sonnet-4-20250514`
+**Model**: `claude-sonnet-4-6`
 
 ### Two Enhancement Modes
 
-| Mode | Flag | Description | Accuracy | Cost |
-|------|------|-------------|----------|------|
-| **Single-shot** | `--llm` | One prompt per unit, fast | ~31% | ~$0.02/unit |
-| **Agentic** | `--llm --agentic` | Iterative tool use, traces call paths | **100%** | ~$0.21/unit |
+| Mode            | Flag              | Description                           | Accuracy | Cost        |
+| --------------- | ----------------- | ------------------------------------- | -------- | ----------- |
+| **Single-shot** | `--llm`           | One prompt per unit, fast             | ~31%     | ~$0.02/unit |
+| **Agentic**     | `--llm --agentic` | Iterative tool use, traces call paths | **100%** | ~$0.21/unit |
 
 ### Single-Shot Mode (Default)
 
@@ -410,14 +410,14 @@ Fast, single-prompt analysis. Good for initial exploration but has high false po
 Iterative analysis with tool use. The agent searches for function usages, reads code, and traces call paths to understand intent.
 
 **Agent Tools**:
-| Tool | Purpose |
-|------|---------|
-| `search_usages` | Find where a function is called |
+| Tool                 | Purpose                          |
+| -------------------- | -------------------------------- |
+| `search_usages`      | Find where a function is called  |
 | `search_definitions` | Find where a function is defined |
-| `read_function` | Get full function code by ID |
-| `list_functions` | List functions in a file |
-| `read_file_section` | Read specific lines from a file |
-| `finish` | Complete analysis with result |
+| `read_function`      | Get full function code by ID     |
+| `list_functions`     | List functions in a file         |
+| `read_file_section`  | Read specific lines from a file  |
+| `finish`             | Complete analysis with result    |
 
 **Output** (added to each unit):
 ```json
@@ -444,12 +444,12 @@ Iterative analysis with tool use. The agent searches for function usages, reads 
 ```
 
 **Security Classifications** (Reachability-Aware):
-| Classification | Meaning |
-|----------------|---------|
-| `exploitable` | Vulnerable AND reachable from user input (HTTP, CLI, stdin, etc.) |
+| Classification        | Meaning                                                             |
+| --------------------- | ------------------------------------------------------------------- |
+| `exploitable`         | Vulnerable AND reachable from user input (HTTP, CLI, stdin, etc.)   |
 | `vulnerable_internal` | Vulnerable but NOT reachable from user input (internal APIs, tests) |
-| `security_control` | Prevents or blocks vulnerabilities |
-| `neutral` | Neither vulnerable nor a security control |
+| `security_control`    | Prevents or blocks vulnerabilities                                  |
+| `neutral`             | Neither vulnerable nor a security control                           |
 
 **Reachability Analysis**:
 The agentic enhancer now includes reachability analysis to distinguish exploitable vulnerabilities from internal-only ones:
@@ -478,28 +478,28 @@ python -m utilities.context_enhancer <dataset.json> \
 
 ## File Locations
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `repository_scanner.js` | `parsers/javascript/` | Stage 1: File enumeration |
-| `typescript_analyzer.js` | External | Stage 2: Function extraction |
-| `dependency_resolver.js` | `parsers/javascript/` | Call graph building (used by Stage 3) |
-| `unit_generator.js` | `parsers/javascript/` | Stage 3: Dataset generation (OpenAnt format) |
-| `context_enhancer.py` | `utilities/` | Stage 4: LLM enhancement |
-| `agentic_enhancer/` | `utilities/` | Agentic enhancement module |
-| `agentic_enhancer/entry_point_detector.py` | `utilities/` | Entry point detection (route handlers, CLI, etc.) |
-| `agentic_enhancer/reachability_analyzer.py` | `utilities/` | User input reachability analysis |
-| `test_pipeline.py` | `parsers/javascript/` | Pipeline orchestration |
-| `validate_dataset_schema.py` | `openant/` | Validate dataset matches OpenAnt schema |
+| File                                        | Location              | Purpose                                           |
+| ------------------------------------------- | --------------------- | ------------------------------------------------- |
+| `repository_scanner.js`                     | `parsers/javascript/` | Stage 1: File enumeration                         |
+| `typescript_analyzer.js`                    | External              | Stage 2: Function extraction                      |
+| `dependency_resolver.js`                    | `parsers/javascript/` | Call graph building (used by Stage 3)             |
+| `unit_generator.js`                         | `parsers/javascript/` | Stage 3: Dataset generation (OpenAnt format)      |
+| `context_enhancer.py`                       | `utilities/`          | Stage 4: LLM enhancement                          |
+| `agentic_enhancer/`                         | `utilities/`          | Agentic enhancement module                        |
+| `agentic_enhancer/entry_point_detector.py`  | `utilities/`          | Entry point detection (route handlers, CLI, etc.) |
+| `agentic_enhancer/reachability_analyzer.py` | `utilities/`          | User input reachability analysis                  |
+| `test_pipeline.py`                          | `parsers/javascript/` | Pipeline orchestration                            |
+| `validate_dataset_schema.py`                | `openant/`            | Validate dataset matches OpenAnt schema           |
 
 ---
 
 ## Model Strategy
 
-| Task | Model | Rationale |
-|------|-------|-----------|
-| Context enhancement (single-shot) | Sonnet | Auxiliary task, cost-effective |
-| Context enhancement (agentic) | Sonnet | Tool use for exploration |
-| Vulnerability detection | Opus | Core analysis, requires deep reasoning |
+| Task                              | Model  | Rationale                              |
+| --------------------------------- | ------ | -------------------------------------- |
+| Context enhancement (single-shot) | Sonnet | Auxiliary task, cost-effective         |
+| Context enhancement (agentic)     | Sonnet | Tool use for exploration               |
+| Vulnerability detection           | Opus   | Core analysis, requires deep reasoning |
 
 All LLM calls are in Python (`utilities/`). JavaScript components perform static analysis only.
 

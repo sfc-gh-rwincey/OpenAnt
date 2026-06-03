@@ -29,6 +29,19 @@ def _output_json(data: dict):
     sys.stdout.write("\n")
 
 
+def _resolve_checkpoint_arg(args) -> str | None:
+    """Translate ``--checkpoint`` / ``--no-checkpoint`` into the wrapper's
+    three-valued contract:
+
+      * ``None``  → caller should auto-pick a default
+      * ``""``    → caller should explicitly disable checkpointing
+      * ``"/p"``  → use exactly that path
+    """
+    if getattr(args, "no_checkpoint", False):
+        return ""
+    return getattr(args, "checkpoint", None)
+
+
 def cmd_scan(args):
     """Scan a repository end-to-end."""
     from core.scanner import scan_repository
@@ -53,6 +66,8 @@ def cmd_scan(args):
             dynamic_test=args.dynamic_test,
             since=getattr(args, "since", None),
             diff_base=getattr(args, "diff_base", None),
+            workers=getattr(args, "workers", 1),
+            checkpoint_path=_resolve_checkpoint_arg(args),
         )
 
         _output_json(success(result.to_dict()))
@@ -140,6 +155,7 @@ def cmd_enhance(args):
                 repo_path=args.repo_path,
                 mode=args.mode,
                 checkpoint_path=args.checkpoint,
+                workers=getattr(args, "workers", 1),
             )
 
             ctx.summary = {
@@ -188,6 +204,7 @@ def cmd_analyze(args):
                 limit=args.limit,
                 model=args.model,
                 exploitable_only=args.exploitable_only,
+                workers=getattr(args, "workers", 1),
             )
 
             ctx.summary = {
@@ -223,6 +240,7 @@ def cmd_analyze(args):
                         analyzer_output_path=args.analyzer_output,
                         app_context_path=args.app_context,
                         repo_path=args.repo_path,
+                        workers=getattr(args, "workers", 1),
                     )
 
                     vctx.summary = {
@@ -274,6 +292,7 @@ def cmd_verify(args):
                 analyzer_output_path=args.analyzer_output,
                 app_context_path=args.app_context,
                 repo_path=args.repo_path,
+                workers=getattr(args, "workers", 1),
             )
 
             ctx.summary = {
@@ -349,6 +368,7 @@ def cmd_dynamic_test(args):
                 pipeline_output_path=args.pipeline_output,
                 output_dir=output_dir,
                 max_retries=args.max_retries,
+                workers=getattr(args, "workers", 1),
             )
 
             ctx.summary = {
@@ -466,7 +486,7 @@ def main():
     scan_p.add_argument("--output", "-o", help="Output directory (default: temp dir)")
     scan_p.add_argument(
         "--language", "-l",
-        choices=["auto", "python", "javascript", "go", "c", "ruby", "php", "cicd"],
+        choices=["auto", "python", "javascript", "go", "c", "java", "ruby", "php", "cicd"],
         default="auto",
         help="Language (default: auto-detect). Use 'cicd' for CI/CD-only scan.",
     )
@@ -493,6 +513,23 @@ def main():
     scan_p.add_argument("--model", choices=["opus", "sonnet"], default="opus", help="Model (default: opus)")
     scan_p.add_argument("--since", help="Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
     scan_p.add_argument("--diff-base", help="Only scan files changed vs this branch/commit (e.g. 'main', 'abc1234')")
+    scan_p.add_argument(
+        "--workers", type=int, default=1,
+        help="Worker threads for enhance/analyze/verify/dynamic-test loops "
+             "(default: 1 = sequential). Recommended: 4-10 for LLM stages, "
+             "2-4 for dynamic-test (Docker-bound).",
+    )
+    scan_p.add_argument(
+        "--checkpoint",
+        help="Path to save/resume agentic-enhance checkpoint. "
+             "Defaults to <output_dir>/enhance_checkpoint.json. "
+             "Single-shot mode ignores checkpoints. "
+             "Use --no-checkpoint to disable.",
+    )
+    scan_p.add_argument(
+        "--no-checkpoint", action="store_true",
+        help="Disable agentic-enhance checkpointing entirely.",
+    )
     scan_p.set_defaults(func=cmd_scan)
 
     # ---------------------------------------------------------------
@@ -503,7 +540,7 @@ def main():
     parse_p.add_argument("--output", "-o", help="Output directory (default: temp dir)")
     parse_p.add_argument(
         "--language", "-l",
-        choices=["auto", "python", "javascript", "go", "c", "ruby", "php", "cicd"],
+        choices=["auto", "python", "javascript", "go", "c", "java", "ruby", "php", "cicd"],
         default="auto",
         help="Language (default: auto-detect). Use 'cicd' for CI/CD configs only.",
     )
@@ -534,6 +571,10 @@ def main():
         default="agentic",
         help="Enhancement mode (default: agentic — thorough but more expensive)",
     )
+    enhance_p.add_argument(
+        "--workers", type=int, default=1,
+        help="Worker threads for the per-unit loop (default: 1 = sequential).",
+    )
     enhance_p.set_defaults(func=cmd_enhance)
 
     # ---------------------------------------------------------------
@@ -550,6 +591,10 @@ def main():
     analyze_p.add_argument("--exploitable-only", action="store_true",
                            help="Only analyze units classified as exploitable/vulnerable by enhancer")
     analyze_p.add_argument("--model", choices=["opus", "sonnet"], default="opus", help="Model (default: opus)")
+    analyze_p.add_argument(
+        "--workers", type=int, default=1,
+        help="Worker threads for the per-unit loop (default: 1 = sequential).",
+    )
     analyze_p.set_defaults(func=cmd_analyze)
 
     # ---------------------------------------------------------------
@@ -561,6 +606,10 @@ def main():
     verify_p.add_argument("--app-context", help="Path to application_context.json")
     verify_p.add_argument("--repo-path", help="Path to the repository")
     verify_p.add_argument("--output", "-o", help="Output directory (default: temp dir)")
+    verify_p.add_argument(
+        "--workers", type=int, default=1,
+        help="Worker threads for per-finding verification (default: 1 = sequential).",
+    )
     verify_p.set_defaults(func=cmd_verify)
 
     # ---------------------------------------------------------------
@@ -585,6 +634,11 @@ def main():
     dt_p.add_argument("--output", "-o", help="Output directory (default: temp dir)")
     dt_p.add_argument("--max-retries", type=int, default=3,
                       help="Max retries per finding on error (default: 3)")
+    dt_p.add_argument(
+        "--workers", type=int, default=1,
+        help="Worker threads for per-finding Docker testing (default: 1 = sequential). "
+             "Bounded by Docker daemon capacity.",
+    )
     dt_p.set_defaults(func=cmd_dynamic_test)
 
     # ---------------------------------------------------------------

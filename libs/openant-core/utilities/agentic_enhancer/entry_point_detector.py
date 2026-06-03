@@ -24,10 +24,11 @@ from typing import Dict, List, Set
 
 # Entry point patterns by unit_type (from function extractor classification)
 ENTRY_POINT_TYPES = {
-    'route_handler',      # Flask/FastAPI/Express routes
+    'route_handler',      # Flask/FastAPI/Express routes / Spring MVC / JAX-RS
     'view_function',      # Django views
     'websocket_handler',  # WebSocket endpoints
     'cli_handler',        # CLI commands
+    'main',               # main() / public static void main(String[]) / func main()
 }
 
 # Decorator patterns indicating entry points (case-insensitive matching)

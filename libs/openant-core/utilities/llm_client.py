@@ -10,7 +10,7 @@ Classes:
 Usage:
     from utilities.llm_client import AnthropicClient, get_global_tracker
 
-    client = AnthropicClient(model="claude-opus-4-20250514")
+    client = AnthropicClient(model="claude-sonnet-4-6")
     response = client.analyze_sync("Analyze this code...")
 
     tracker = get_global_tracker()
@@ -18,6 +18,7 @@ Usage:
 """
 
 import os
+import threading
 from typing import Optional
 import anthropic
 from dotenv import load_dotenv
@@ -27,9 +28,7 @@ from utilities.snowflake_client import create_cortex_client, map_model_name
 
 # Pricing per million tokens (as of December 2024)
 MODEL_PRICING = {
-    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00},
     "claude-opus-4-6": {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     # Fallback for unknown models (use Sonnet pricing as conservative estimate)
     "default": {"input": 3.00, "output": 15.00}
@@ -39,22 +38,30 @@ MODEL_PRICING = {
 class TokenTracker:
     """
     Tracks token usage and costs across LLM calls.
+
+    Thread-safe: ``record_call`` and the read accessors take an internal lock,
+    so multiple worker threads can share a single tracker safely.
     """
 
     def __init__(self):
+        # Lock guards mutation of the counter fields and the calls list.
+        # Created before reset() so reset() can take it itself.
+        self._lock = threading.Lock()
         self.reset()
 
     def reset(self):
         """Reset all counters."""
-        self.calls = []
-        self.total_input_tokens = 0
-        self.total_output_tokens = 0
-        self.total_cost_usd = 0.0
+        with self._lock:
+            self.calls = []
+            self.total_input_tokens = 0
+            self.total_output_tokens = 0
+            self.total_cost_usd = 0.0
 
     @property
     def total_tokens(self) -> int:
         """Total tokens (input + output)."""
-        return self.total_input_tokens + self.total_output_tokens
+        with self._lock:
+            return self.total_input_tokens + self.total_output_tokens
 
     def record_call(self, model: str, input_tokens: int, output_tokens: int) -> dict:
         """
@@ -83,11 +90,11 @@ class TokenTracker:
             "cost_usd": round(total_cost, 6)
         }
 
-        # Update totals
-        self.calls.append(call_record)
-        self.total_input_tokens += input_tokens
-        self.total_output_tokens += output_tokens
-        self.total_cost_usd += total_cost
+        with self._lock:
+            self.calls.append(call_record)
+            self.total_input_tokens += input_tokens
+            self.total_output_tokens += output_tokens
+            self.total_cost_usd += total_cost
 
         return call_record
 
@@ -98,14 +105,15 @@ class TokenTracker:
         Returns:
             Dict with totals and per-call breakdown
         """
-        return {
-            "total_calls": len(self.calls),
-            "total_input_tokens": self.total_input_tokens,
-            "total_output_tokens": self.total_output_tokens,
-            "total_tokens": self.total_input_tokens + self.total_output_tokens,
-            "total_cost_usd": round(self.total_cost_usd, 6),
-            "calls": self.calls
-        }
+        with self._lock:
+            return {
+                "total_calls": len(self.calls),
+                "total_input_tokens": self.total_input_tokens,
+                "total_output_tokens": self.total_output_tokens,
+                "total_tokens": self.total_input_tokens + self.total_output_tokens,
+                "total_cost_usd": round(self.total_cost_usd, 6),
+                "calls": list(self.calls),
+            }
 
     def get_totals(self) -> dict:
         """
@@ -114,13 +122,14 @@ class TokenTracker:
         Returns:
             Dict with totals only
         """
-        return {
-            "total_calls": len(self.calls),
-            "total_input_tokens": self.total_input_tokens,
-            "total_output_tokens": self.total_output_tokens,
-            "total_tokens": self.total_input_tokens + self.total_output_tokens,
-            "total_cost_usd": round(self.total_cost_usd, 6)
-        }
+        with self._lock:
+            return {
+                "total_calls": len(self.calls),
+                "total_input_tokens": self.total_input_tokens,
+                "total_output_tokens": self.total_output_tokens,
+                "total_tokens": self.total_input_tokens + self.total_output_tokens,
+                "total_cost_usd": round(self.total_cost_usd, 6)
+            }
 
 
 # Global tracker instance for session-wide tracking
@@ -145,13 +154,13 @@ class AnthropicClient:
     Tracks token usage and costs for all calls.
     """
 
-    def __init__(self, model: str = "claude-opus-4-20250514", tracker: TokenTracker = None):
+    def __init__(self, model: str = "claude-opus-4-6", tracker: TokenTracker = None):
         """
         Initialize the Anthropic client via Snowflake Cortex.
 
         Args:
             model: Model identifier. Default is Claude Opus 4 (highest capability).
-                   Use "claude-sonnet-4-20250514" for cost-effective option.
+                   Use "claude-sonnet-4-6" for cost-effective option.
                    Model names are mapped to Snowflake Cortex equivalents.
             tracker: Optional TokenTracker instance. Uses global tracker if not provided.
         """

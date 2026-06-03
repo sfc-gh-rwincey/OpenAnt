@@ -27,19 +27,22 @@ A final scan.report.json aggregates all step reports.`,
 }
 
 var (
-	scanOutput      string
-	scanLanguage    string
-	scanLevel       string
-	scanVerify      bool
-	scanNoContext   bool
-	scanNoEnhance   bool
-	scanEnhanceMode string
-	scanNoReport    bool
-	scanDynamicTest bool
-	scanLimit       int
-	scanModel       string
-	scanSince       string
-	scanDiffBase    string
+	scanOutput       string
+	scanLanguage     string
+	scanLevel        string
+	scanVerify       bool
+	scanNoContext    bool
+	scanNoEnhance    bool
+	scanEnhanceMode  string
+	scanNoReport     bool
+	scanDynamicTest  bool
+	scanLimit        int
+	scanModel        string
+	scanSince        string
+	scanDiffBase     string
+	scanWorkers      int
+	scanCheckpoint   string
+	scanNoCheckpoint bool
 )
 
 func init() {
@@ -56,6 +59,9 @@ func init() {
 	scanCmd.Flags().StringVar(&scanModel, "model", "opus", "Model: opus or sonnet")
 	scanCmd.Flags().StringVar(&scanSince, "since", "", "Only scan files changed since this date (e.g. '1 week ago', '2025-04-01')")
 	scanCmd.Flags().StringVar(&scanDiffBase, "diff-base", "", "Only scan files changed compared to this branch/commit (e.g. 'main', 'abc1234')")
+	scanCmd.Flags().IntVar(&scanWorkers, "workers", 1, "Worker threads for enhance/analyze/verify/dynamic-test loops (default: 1 = sequential)")
+	scanCmd.Flags().StringVar(&scanCheckpoint, "checkpoint", "", "Path to save/resume agentic-enhance checkpoint (default: <output>/enhance_checkpoint.json). Single-shot ignores checkpoints.")
+	scanCmd.Flags().BoolVar(&scanNoCheckpoint, "no-checkpoint", false, "Disable agentic-enhance checkpointing entirely")
 }
 
 func runScan(cmd *cobra.Command, args []string) {
@@ -124,6 +130,14 @@ func runScan(cmd *cobra.Command, args []string) {
 	}
 	if scanDiffBase != "" {
 		pyArgs = append(pyArgs, "--diff-base", scanDiffBase)
+	}
+	if scanWorkers > 1 {
+		pyArgs = append(pyArgs, "--workers", fmt.Sprintf("%d", scanWorkers))
+	}
+	if scanNoCheckpoint {
+		pyArgs = append(pyArgs, "--no-checkpoint")
+	} else if scanCheckpoint != "" {
+		pyArgs = append(pyArgs, "--checkpoint", scanCheckpoint)
 	}
 
 	pat, account, user := requireSnowflakeCreds()
