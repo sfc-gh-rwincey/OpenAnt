@@ -96,7 +96,10 @@ func runParse(cmd *cobra.Command, args []string) {
 		pyArgs = append(pyArgs, "--diff-base", parseDiffBase)
 	}
 
-	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, resolvedSnowflakePAT(), resolvedSnowflakeAccount(), resolvedSnowflakeUser())
+	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, python.SnowflakeEnv{
+		PAT: resolvedSnowflakePAT(), Account: resolvedSnowflakeAccount(),
+		User: resolvedSnowflakeUser(), Role: resolvedSnowflakeRole(),
+	})
 	if err != nil {
 		output.PrintError(err.Error())
 		os.Exit(2)

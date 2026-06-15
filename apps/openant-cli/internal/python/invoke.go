@@ -19,14 +19,21 @@ type InvokeResult struct {
 	ExitCode int
 }
 
+// SnowflakeEnv holds Snowflake credentials to inject into the Python subprocess.
+type SnowflakeEnv struct {
+	PAT     string
+	Account string
+	User    string
+	Role    string
+}
+
 // Invoke runs `python -m openant <args>` and returns the parsed JSON result.
 //
 // - stderr is streamed to the terminal in real-time (progress messages)
 // - stdout is captured and parsed as JSON
 // - Working directory is set to the openant-core lib directory if provided
-// - If snowflakePAT is non-empty, it is injected as SNOWFLAKE_PAT in the subprocess
-// - snowflakeAccount and snowflakeUser are also injected as SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER
-func Invoke(pythonPath string, args []string, workDir string, quiet bool, snowflakePAT string, snowflakeAccount string, snowflakeUser string) (*InvokeResult, error) {
+// - Snowflake credentials from sf are injected into the subprocess environment
+func Invoke(pythonPath string, args []string, workDir string, quiet bool, sf SnowflakeEnv) (*InvokeResult, error) {
 	cmdArgs := append([]string{"-m", "openant"}, args...)
 	cmd := exec.Command(pythonPath, cmdArgs...)
 
@@ -34,18 +41,20 @@ func Invoke(pythonPath string, args []string, workDir string, quiet bool, snowfl
 		cmd.Dir = workDir
 	}
 
-	// Pass through environment (Python needs SNOWFLAKE_PAT, SNOWFLAKE_ACCOUNT, etc.)
-	// If credentials are provided via flag or config, inject them into the
-	// subprocess environment so Python picks them up regardless of .env files.
+	// Pass through environment and inject Snowflake credentials so Python
+	// picks them up regardless of .env files.
 	cmd.Env = os.Environ()
-	if snowflakePAT != "" {
-		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_PAT", snowflakePAT)
+	if sf.PAT != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_PAT", sf.PAT)
 	}
-	if snowflakeAccount != "" {
-		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_ACCOUNT", snowflakeAccount)
+	if sf.Account != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_ACCOUNT", sf.Account)
 	}
-	if snowflakeUser != "" {
-		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_USER", snowflakeUser)
+	if sf.User != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_USER", sf.User)
+	}
+	if sf.Role != "" {
+		cmd.Env = setEnv(cmd.Env, "SNOWFLAKE_ROLE", sf.Role)
 	}
 
 	// Capture stdout (JSON output)
@@ -136,6 +145,11 @@ func streamStderr(r io.Reader, quiet bool) {
 
 // setEnv sets or replaces an environment variable in a []string env slice.
 func setEnv(env []string, key, value string) []string {
+	return SetEnvPublic(env, key, value)
+}
+
+// SetEnvPublic sets or replaces an environment variable in a []string env slice.
+func SetEnvPublic(env []string, key, value string) []string {
 	prefix := key + "="
 	for i, e := range env {
 		if strings.HasPrefix(e, prefix) {

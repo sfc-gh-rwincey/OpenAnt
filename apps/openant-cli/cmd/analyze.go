@@ -102,8 +102,10 @@ func runAnalyze(cmd *cobra.Command, args []string) {
 		pyArgs = append(pyArgs, "--workers", fmt.Sprintf("%d", analyzeWorkers))
 	}
 
-	pat, account, user := requireSnowflakeCreds()
-	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, pat, account, user)
+	creds := requireSnowflakeCreds()
+	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, python.SnowflakeEnv{
+		PAT: creds.PAT, Account: creds.Account, User: creds.User, Role: creds.Role,
+	})
 	if err != nil {
 		output.PrintError(err.Error())
 		os.Exit(2)

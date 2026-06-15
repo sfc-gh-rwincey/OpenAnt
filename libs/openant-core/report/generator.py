@@ -20,13 +20,16 @@ MODEL = "claude-sonnet-4-6"  # mapped to Snowflake name at call time
 
 
 def _check_api_key():
-    """Check that Snowflake credentials are set."""
-    if not os.environ.get("SNOWFLAKE_PAT"):
-        print("Error: SNOWFLAKE_PAT environment variable not set.", file=sys.stderr)
-        print("Generate a PAT in Snowsight: Settings → Authentication → Programmatic Access Tokens.", file=sys.stderr)
-        sys.exit(1)
+    """Check that Snowflake credentials are available (PAT, OAuth token, or browser auth possible)."""
     if not os.environ.get("SNOWFLAKE_ACCOUNT"):
         print("Error: SNOWFLAKE_ACCOUNT environment variable not set.", file=sys.stderr)
+        sys.exit(1)
+    # With OAuth support, we no longer require PAT upfront — the client
+    # will trigger browser auth if neither SNOWFLAKE_PAT nor SNOWFLAKE_TOKEN is set.
+    has_token = os.environ.get("SNOWFLAKE_PAT") or os.environ.get("SNOWFLAKE_TOKEN")
+    if not has_token and not os.environ.get("SNOWFLAKE_USER"):
+        print("Error: No Snowflake credentials available.", file=sys.stderr)
+        print("Either set SNOWFLAKE_PAT, SNOWFLAKE_TOKEN, or SNOWFLAKE_USER (for OAuth browser login).", file=sys.stderr)
         sys.exit(1)
 
 

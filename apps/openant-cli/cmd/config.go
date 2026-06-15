@@ -32,10 +32,13 @@ var configSetCmd = &cobra.Command{
 	Long: `Set a configuration value. For sensitive values like snowflake-pat,
 the value is read from stdin (not echoed) to avoid shell history exposure.
 
-Supported keys: snowflake-pat, snowflake-account, snowflake-user, default-model
+Supported keys: snowflake-pat, snowflake-account, snowflake-user, snowflake-role, default-model
 
 Examples:
-  openant config set snowflake-pat              Interactive prompt (recommended)
+  openant config set snowflake-account          Set account for OAuth
+  openant config set snowflake-user             Set username for OAuth
+  openant config set snowflake-role             Set role for OAuth scope
+  openant config set snowflake-pat              Set PAT (legacy, interactive)
   echo "pat-value" | openant config set snowflake-pat --stdin   Piped input`,
 	Args: cobra.ExactArgs(1),
 	Run:  runConfigSet,
@@ -148,6 +151,27 @@ func runConfigSet(cmd *cobra.Command, args []string) {
 
 		cfg.SnowflakeUser = value
 
+	case "snowflake-role":
+		if configStdin {
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				value = strings.TrimSpace(scanner.Text())
+			}
+		} else {
+			fmt.Fprint(os.Stderr, "Enter Snowflake role (for OAuth scope): ")
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				value = strings.TrimSpace(scanner.Text())
+			}
+		}
+
+		if value == "" {
+			output.PrintError("No value provided")
+			os.Exit(1)
+		}
+
+		cfg.SnowflakeRole = value
+
 	case "default-model":
 		if configStdin {
 			scanner := bufio.NewScanner(os.Stdin)
@@ -170,7 +194,7 @@ func runConfigSet(cmd *cobra.Command, args []string) {
 		cfg.DefaultModel = value
 
 	default:
-		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: snowflake-pat, snowflake-account, snowflake-user, default-model", key))
+		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: snowflake-pat, snowflake-account, snowflake-user, snowflake-role, default-model", key))
 		os.Exit(1)
 	}
 
@@ -193,12 +217,17 @@ func runConfigShow(cmd *cobra.Command, args []string) {
 	path, _ := config.Path()
 
 	output.PrintHeader("Configuration")
-	output.PrintKeyValue("snowflake_pat", config.MaskKey(cfg.SnowflakePAT))
 	if cfg.SnowflakeAccount != "" {
 		output.PrintKeyValue("snowflake_account", cfg.SnowflakeAccount)
 	}
 	if cfg.SnowflakeUser != "" {
 		output.PrintKeyValue("snowflake_user", cfg.SnowflakeUser)
+	}
+	if cfg.SnowflakeRole != "" {
+		output.PrintKeyValue("snowflake_role", cfg.SnowflakeRole)
+	}
+	if cfg.SnowflakePAT != "" {
+		output.PrintKeyValue("snowflake_pat", config.MaskKey(cfg.SnowflakePAT))
 	}
 	if cfg.DefaultModel != "" {
 		output.PrintKeyValue("default_model", cfg.DefaultModel)
@@ -226,10 +255,12 @@ func runConfigUnset(cmd *cobra.Command, args []string) {
 		cfg.SnowflakeAccount = ""
 	case "snowflake-user":
 		cfg.SnowflakeUser = ""
+	case "snowflake-role":
+		cfg.SnowflakeRole = ""
 	case "default-model":
 		cfg.DefaultModel = ""
 	default:
-		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: snowflake-pat, snowflake-account, snowflake-user, default-model", key))
+		output.PrintError(fmt.Sprintf("Unknown config key: %s\nSupported keys: snowflake-pat, snowflake-account, snowflake-user, snowflake-role, default-model", key))
 		os.Exit(1)
 	}
 

@@ -13,7 +13,8 @@ The report calls Claude (Sonnet) to generate actionable remediation guidance
 based on the vulnerability findings. This requires an API key.
 
 Requirements:
-    - SNOWFLAKE_PAT and SNOWFLAKE_ACCOUNT environment variables (or .env file)
+    - SNOWFLAKE_ACCOUNT environment variable (or .env file)
+    - Authentication: SNOWFLAKE_TOKEN, SNOWFLAKE_PAT, or OAuth browser login (requires SNOWFLAKE_USER)
     - Internet connection for Chart.js CDN
 
 Usage:

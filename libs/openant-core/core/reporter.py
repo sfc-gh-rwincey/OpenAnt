@@ -275,7 +275,7 @@ def generate_summary_report(
 ) -> ReportResult:
     """Generate LLM-based summary report (Markdown).
 
-    Wraps report/generator.py. Requires SNOWFLAKE_PAT and SNOWFLAKE_ACCOUNT.
+    Wraps report/generator.py. Requires SNOWFLAKE_ACCOUNT and valid auth (OAuth or PAT).
 
     Args:
         results_path: Path to results JSON (pipeline output format).
@@ -310,7 +310,7 @@ def generate_disclosure_docs(
 ) -> ReportResult:
     """Generate per-vulnerability disclosure documents.
 
-    Wraps report/generator.py disclosures command. Requires SNOWFLAKE_PAT and SNOWFLAKE_ACCOUNT.
+    Wraps report/generator.py disclosures command. Requires SNOWFLAKE_ACCOUNT and valid auth (OAuth or PAT).
 
     Args:
         results_path: Path to results JSON (pipeline output format).

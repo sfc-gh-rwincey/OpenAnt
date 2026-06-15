@@ -65,30 +65,61 @@ func resolvedSnowflakeUser() string {
 	return config.ResolveSnowflakeUser()
 }
 
-// requireSnowflakeCreds returns the resolved Snowflake PAT and account, or exits
+// resolvedSnowflakeRole returns the Snowflake role from config.
+func resolvedSnowflakeRole() string {
+	return config.ResolveSnowflakeRole()
+}
+
+// SnowflakeCreds holds resolved Snowflake authentication credentials.
+type SnowflakeCreds struct {
+	PAT     string
+	Account string
+	User    string
+	Role    string
+}
+
+// requireSnowflakeCreds returns the resolved Snowflake credentials, or exits
 // with a helpful error telling the user how to configure them.
-func requireSnowflakeCreds() (string, string, string) {
+//
+// With OAuth support, only account and user are strictly required. If no PAT
+// is configured, Python will trigger the OAuth browser flow automatically.
+func requireSnowflakeCreds() SnowflakeCreds {
 	pat := resolvedSnowflakePAT()
 	account := resolvedSnowflakeAccount()
 	user := resolvedSnowflakeUser()
-	if pat != "" && account != "" {
-		return pat, account, user
-	}
-	fmt.Fprintln(os.Stderr, "Error: Snowflake credentials not configured.")
-	fmt.Fprintln(os.Stderr, "")
-	if pat == "" {
-		fmt.Fprintln(os.Stderr, "  Missing: SNOWFLAKE_PAT")
-	}
+	role := resolvedSnowflakeRole()
+
+	// Account is always required
 	if account == "" {
+		fmt.Fprintln(os.Stderr, "Error: Snowflake account not configured.")
+		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  Missing: SNOWFLAKE_ACCOUNT")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Run:  openant config set snowflake-account")
+		os.Exit(2)
 	}
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Run:  openant config set snowflake-pat")
-	fmt.Fprintln(os.Stderr, "      openant config set snowflake-account")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Generate a PAT in Snowsight: Settings → Authentication → Programmatic Access Tokens")
-	os.Exit(2)
-	return "", "", "" // unreachable
+
+	// User is required for OAuth (and recommended regardless)
+	if pat == "" && user == "" {
+		fmt.Fprintln(os.Stderr, "Error: Snowflake credentials not configured.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Either configure a PAT or set your username for OAuth:")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Option 1 (OAuth - recommended):")
+		fmt.Fprintln(os.Stderr, "    openant config set snowflake-user")
+		fmt.Fprintln(os.Stderr, "    openant login")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Option 2 (PAT - legacy):")
+		fmt.Fprintln(os.Stderr, "    openant config set snowflake-pat")
+		os.Exit(2)
+	}
+
+	return SnowflakeCreds{
+		PAT:     pat,
+		Account: account,
+		User:    user,
+		Role:    role,
+	}
 }
 
 func init() {

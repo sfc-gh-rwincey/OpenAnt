@@ -2,16 +2,24 @@
 Snowflake Cortex Anthropic Client Factory
 
 Creates an anthropic.Anthropic client that routes through Snowflake's Cortex
-Messages API instead of hitting Anthropic directly. This allows using a
-Snowflake PAT (Programmatic Access Token) for authentication.
+Messages API instead of hitting Anthropic directly.
+
+Authentication (checked in order):
+    1. SNOWFLAKE_TOKEN env var  — Pre-acquired OAuth token (e.g. from CI)
+    2. SNOWFLAKE_PAT env var    — Programmatic Access Token (legacy)
+    3. OAuth browser flow       — Opens browser for interactive login
 
 Required Environment Variables:
-    SNOWFLAKE_PAT:     Snowflake Programmatic Access Token
     SNOWFLAKE_ACCOUNT: Snowflake account identifier
                        (e.g. SFCOGSOPS-SNOWHOUSE_AWS_US_WEST_2)
 
+Required for OAuth (method 3):
+    SNOWFLAKE_USER:    Snowflake username
+
 Optional:
-    SNOWFLAKE_USER:    Snowflake username (informational only)
+    SNOWFLAKE_TOKEN:   Pre-acquired OAuth access token
+    SNOWFLAKE_PAT:     Snowflake Programmatic Access Token (legacy)
+    SNOWFLAKE_ROLE:    Snowflake role for OAuth scope
 
 Model Mapping:
     Snowflake Cortex supports the following Claude models:
@@ -139,28 +147,92 @@ def _get_snowflake_base_url() -> str:
     return f"https://{account}.snowflakecomputing.com/api/v2/cortex"
 
 
-def _get_snowflake_pat() -> str:
-    """Get the Snowflake PAT from environment."""
+def _resolve_bearer_token() -> tuple[str, str]:
+    """Resolve a Bearer token for Snowflake Cortex API calls.
+
+    Returns:
+        Tuple of (token, token_type) where token_type is one of:
+        - "OAUTH" for OAuth access tokens
+        - "PROGRAMMATIC_ACCESS_TOKEN" for PATs
+    """
+    # 1. Pre-acquired OAuth token (from CI, Go CLI, or env)
+    token = os.getenv("SNOWFLAKE_TOKEN")
+    if token:
+        return token, "OAUTH"
+
+    # 2. Legacy PAT
     pat = os.getenv("SNOWFLAKE_PAT")
-    if not pat:
-        raise ValueError(
-            "SNOWFLAKE_PAT not found in environment. "
-            "Generate a Programmatic Access Token in Snowsight: "
-            "Settings → Authentication → Programmatic Access Tokens."
-        )
-    return pat
+    if pat:
+        return pat, "PROGRAMMATIC_ACCESS_TOKEN"
+
+    # 3. OAuth browser flow
+    from utilities.snowflake_auth import get_access_token
+
+    token = get_access_token()
+    return token, "OAUTH"
 
 
-# Cache a single httpx.Client so we reuse connections.
+class _TokenManager:
+    """Manages OAuth token lifecycle with automatic refresh.
+
+    For PATs (which don't have a refresh mechanism), returns the static token.
+    For OAuth tokens, checks expiry and refreshes before each request.
+    """
+
+    def __init__(self, token: str, token_type: str):
+        self._token = token
+        self._token_type = token_type
+
+    @property
+    def token(self) -> str:
+        if self._token_type != "OAUTH":
+            return self._token
+        from utilities.snowflake_auth import get_access_token
+        self._token = get_access_token()
+        return self._token
+
+    @property
+    def token_type(self) -> str:
+        return self._token_type
+
+    def invalidate_and_refresh(self) -> str:
+        """Force a token refresh (call after a 401)."""
+        if self._token_type != "OAUTH":
+            return self._token
+        from utilities.snowflake_auth import _load_cached_token, _save_cached_token, get_access_token
+        cached = _load_cached_token()
+        if cached:
+            cached["expires_at"] = 0
+            _save_cached_token(cached)
+        self._token = get_access_token()
+        return self._token
+
+
+# Singleton token manager and cached client.
+_token_manager: _TokenManager | None = None
 _cached_http_client: httpx.Client | None = None
 
 
-def _get_http_client(pat: str) -> httpx.Client:
-    """Get or create a cached httpx.Client with Bearer auth."""
-    global _cached_http_client
+def _inject_auth_header(request: httpx.Request) -> None:
+    """Event hook that injects a fresh Bearer token on every outgoing request."""
+    if _token_manager is None:
+        return
+    request.headers["Authorization"] = f"Bearer {_token_manager.token}"
+    request.headers["X-Snowflake-Authorization-Token-Type"] = _token_manager.token_type
+
+
+def _get_http_client(token: str, token_type: str) -> httpx.Client:
+    """Get or create a cached httpx.Client with auto-refreshing auth headers."""
+    global _cached_http_client, _token_manager
+    if _token_manager is None:
+        _token_manager = _TokenManager(token, token_type)
+    else:
+        _token_manager._token = token
+        _token_manager._token_type = token_type
+
     if _cached_http_client is None:
         _cached_http_client = httpx.Client(
-            headers={"Authorization": f"Bearer {pat}"},
+            event_hooks={"request": [_inject_auth_header]},
         )
     return _cached_http_client
 
@@ -171,8 +243,15 @@ def create_cortex_client() -> anthropic.Anthropic:
     Uses the Snowflake Messages API which is 100% compatible with
     the Anthropic Python SDK (messages.create, tool use, streaming, etc.).
 
+    Authentication is resolved in order:
+        1. SNOWFLAKE_TOKEN env var (pre-acquired OAuth token)
+        2. SNOWFLAKE_PAT env var (legacy Programmatic Access Token)
+        3. OAuth browser flow (interactive, opens browser)
+
+    The OAuth token is automatically refreshed when it expires during
+    long-running pipeline operations.
+
     Environment variables required:
-        SNOWFLAKE_PAT:     Programmatic Access Token
         SNOWFLAKE_ACCOUNT: Account identifier
 
     Returns:
@@ -180,12 +259,11 @@ def create_cortex_client() -> anthropic.Anthropic:
     """
     load_dotenv()
 
-    pat = _get_snowflake_pat()
+    token, token_type = _resolve_bearer_token()
     base_url = _get_snowflake_base_url()
 
     return anthropic.Anthropic(
         api_key="not-used",  # Required by SDK but Snowflake uses Bearer auth
         base_url=base_url,
-        http_client=_get_http_client(pat),
-        default_headers={"Authorization": f"Bearer {pat}"},
+        http_client=_get_http_client(token, token_type),
     )

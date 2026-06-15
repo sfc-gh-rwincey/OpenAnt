@@ -19,6 +19,7 @@ type Config struct {
 	SnowflakePAT     string `json:"snowflake_pat,omitempty"`
 	SnowflakeAccount string `json:"snowflake_account,omitempty"`
 	SnowflakeUser    string `json:"snowflake_user,omitempty"`
+	SnowflakeRole    string `json:"snowflake_role,omitempty"`
 	DefaultModel     string `json:"default_model,omitempty"`
 	ActiveProject    string `json:"active_project,omitempty"`
 }
@@ -155,6 +156,15 @@ func ResolveSnowflakeUser() string {
 		return ""
 	}
 	return cfg.SnowflakeUser
+}
+
+// ResolveSnowflakeRole returns the role from the config file.
+func ResolveSnowflakeRole() string {
+	cfg, err := Load()
+	if err != nil {
+		return ""
+	}
+	return cfg.SnowflakeRole
 }
 
 // DataDir returns the root data directory: ~/.openant/
